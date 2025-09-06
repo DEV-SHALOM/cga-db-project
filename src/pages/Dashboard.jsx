@@ -554,7 +554,7 @@ export default function Dashboard() {
             <StatCard
               icon={<BookOpen size={22} />}
               value={8}
-              label="New Parents"
+              label="Parents"
             />
             <StatCard
               icon={<Wallet size={22} />}
