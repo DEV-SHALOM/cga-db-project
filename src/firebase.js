@@ -4,14 +4,24 @@ import { getFirestore } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 import { getStorage } from "firebase/storage";  // Add this import
 
+
+
+const API_KEY = import.meta.env.VITE_API_KEY;
+const AUTH_DOMAIN = import.meta.env.VITE_AUTH_DOMAIN;
+const PROJECT_ID = import.meta.env.VITE_PROJECT_ID;
+const STORAGE_BUCKET = import.meta.env.VITE_STORAGE_BUCKET;
+const MESSAGING_SENDER_ID = import.meta.env.VITE_MESSAGING_SENDER_ID;
+const APP_ID = import.meta.env.VITE_APP_ID;
+const MEASUREMENT_ID = import.meta.env.VITE_MEASUREMENT_ID;
+
 const firebaseConfig = {
-  apiKey: "AIzaSyCgtr7eJpGuiBZWRGYgWEBZkM7d7HHkKXs",
-  authDomain: "chosen-generation-academy.firebaseapp.com",
-  projectId: "chosen-generation-academy",
-  storageBucket: "chosen-generation-academy.appspot.com",
-  messagingSenderId: "997808063090",
-  appId: "1:997808063090:web:18a4cbf13dd5d25fd238eb",
-  measurementId: "G-3DXRQ2D9B4"
+  apiKey: API_KEY,
+  authDomain: AUTH_DOMAIN,
+  projectId: PROJECT_ID,
+  storageBucket: STORAGE_BUCKET,
+  messagingSenderId: MESSAGING_SENDER_ID,
+  appId: APP_ID,
+  measurementId: MEASUREMENT_ID
 };
 
 const app = initializeApp(firebaseConfig);
