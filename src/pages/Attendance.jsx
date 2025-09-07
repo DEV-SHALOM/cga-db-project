@@ -24,16 +24,26 @@ import {
 import { db } from "../firebase";
 import { useActiveTerm } from "../hooks/useActiveTerm";
 
+/* --------------------------- CLASS STRUCTURE --------------------------- */
+// helper to create A/B streams like ["Nursery 1 A","Nursery 1 B",...]
+const makeAB = (prefix, count) =>
+  Array.from({ length: count }, (_, i) => {
+    const n = i + 1;
+    return [`${prefix} ${n} A`, `${prefix} ${n} B`];
+  }).flat();
+
 const classStructure = [
   { section: "Pre-Kg", classes: ["Pre-Kg"] },
-  { section: "Nursery", classes: ["Nursery 1", "Nursery 2", "Nursery 3"] },
+
+  // Nursery 1–3 with A/B
+  { section: "Nursery", classes: makeAB("Nursery", 3) },
+
+  // Basic 1–5 with A/B
+  { section: "Basic", classes: makeAB("Basic", 5) },
+
   {
-    section: "Basic",
-    classes: ["Basic 1", "Basic 2", "Basic 3", "Basic 4", "Basic 5"],
-  },
-  {
-    section: "Junior Secondary (JSS)",
-    classes: ["JSS1 A", "JSS1 B", "JSS2 A", "JSS2 B", "JSS3 A", "JSS3 B"],
+    section: "Junior Secondary (JS)",
+    classes: ["JS1 A", "JS1 B", "JS2 A", "JS2 B", "JS3 A", "JS3 B"],
   },
   {
     section: "Senior Secondary (SS)",
@@ -50,7 +60,7 @@ const classStructure = [
 
 const allClasses = classStructure.flatMap((s) => s.classes);
 
-// ---------- helpers ----------
+/* ------------------------------ HELPERS ------------------------------- */
 function getDayKey(d) {
   return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; // keep existing unpadded key format
 }
@@ -83,6 +93,7 @@ function Notification({ message }) {
   );
 }
 
+/* ---------------------------- MAIN COMPONENT --------------------------- */
 export default function AttendancePage() {
   const termId = useActiveTerm(); // 👈 current active term
 
@@ -378,10 +389,10 @@ export default function AttendancePage() {
               existing[s.id].status === "absent" &&
               desired === "present"
             ) {
-              if (curA > 0) u.timesAbsent = increment(-1);
-              u.timesPresent = increment(1);
               if (curTA > 0) u.termTimesAbsent = increment(-1);
               u.termTimesPresent = increment(1);
+              if (curA > 0) u.timesAbsent = increment(-1);
+              u.timesPresent = increment(1);
             }
           }
           if (Object.keys(u).length) toUpdate.push({ ref: sRef, updates: u });
@@ -784,14 +795,13 @@ export default function AttendancePage() {
                             disabled={!hasStudents}
                             aria-disabled={!hasStudents}
                             className={`flex-1 px-4 py-2 rounded-lg flex items-center justify-center gap-2 text-white
-          ${
-            hasStudents
-              ? "bg-green-600/50 hover:bg-green-600/70"
-              : "bg-green-600/30 cursor-not-allowed opacity-60"
-          }`}
+                            ${
+                              hasStudents
+                                ? "bg-green-600/50 hover:bg-green-600/70"
+                                : "bg-green-600/30 cursor-not-allowed opacity-60"
+                            }`}
                           >
-                            <span className="font-bold">✓</span> Mark All
-                            Present
+                            <span className="font-bold">✓</span> Mark All Present
                           </button>
 
                           <button
@@ -802,11 +812,11 @@ export default function AttendancePage() {
                             disabled={!hasStudents}
                             aria-disabled={!hasStudents}
                             className={`flex-1 px-4 py-2 rounded-lg flex items-center justify-center gap-2 text-white
-          ${
-            hasStudents
-              ? "bg-red-600/50 hover:bg-red-600/70"
-              : "bg-red-600/30 cursor-not-allowed opacity-60"
-          }`}
+                            ${
+                              hasStudents
+                                ? "bg-red-600/50 hover:bg-red-600/70"
+                                : "bg-red-600/30 cursor-not-allowed opacity-60"
+                            }`}
                           >
                             <span className="font-bold">×</span> Mark All Absent
                           </button>
@@ -814,16 +824,21 @@ export default function AttendancePage() {
                       );
                     })()}
 
-                    <div
-                      className={`transition-all overflow-hidden ${
-                        openSection === section.section ? "py-2" : "max-h-0"
-                      }`}
+                    {/* >>> This is the FIX: use motion.div with height:auto so long class lists never clip <<< */}
+                    <motion.div
+                      initial={false}
+                      animate={{
+                        height: openSection === section.section ? "auto" : 0,
+                        opacity: openSection === section.section ? 1 : 0,
+                      }}
+                      transition={{ duration: 0.35, ease: [0.2, 0, 0, 1] }}
+                      style={{ overflow: "hidden" }}
                     >
                       <div className="flex flex-col gap-6 mt-3">
                         {section.classes.map((className) => {
-                          const classStudents = (
-                            students[className] || []
-                          ).filter((s) => !!s.studentId);
+                          const classStudents = (students[className] || []).filter(
+                            (s) => !!s.studentId
+                          );
                           const stats = calculateClassAttendance(className);
                           return (
                             <div
@@ -859,39 +874,21 @@ export default function AttendancePage() {
                                 <table className="w-full text-sm md:text-base rounded-xl">
                                   <thead>
                                     <tr className="bg-gradient-to-r from-[#1e0447]/90 to-[#372772]/90">
-                                      <th className="px-3 py-2 text-left">
-                                        ID
-                                      </th>
-                                      <th className="px-3 py-2 text-left">
-                                        Name
-                                      </th>
-                                      <th className="px-3 py-2 text-center">
-                                        Status
-                                      </th>
-                                      <th className="px-3 py-2 text-left">
-                                        Time
-                                      </th>
-                                      <th className="px-3 py-2 text-center">
-                                        Present
-                                      </th>
-                                      <th className="px-3 py-2 text-center">
-                                        Absent
-                                      </th>
-                                      <th className="px-3 py-2 text-left">
-                                        Actions
-                                      </th>
+                                      <th className="px-3 py-2 text-left">ID</th>
+                                      <th className="px-3 py-2 text-left">Name</th>
+                                      <th className="px-3 py-2 text-center">Status</th>
+                                      <th className="px-3 py-2 text-left">Time</th>
+                                      <th className="px-3 py-2 text-center">Present</th>
+                                      <th className="px-3 py-2 text-center">Absent</th>
+                                      <th className="px-3 py-2 text-left">Actions</th>
                                     </tr>
                                   </thead>
                                   <tbody className="divide-y divide-white/10">
                                     {classStudents.map((s) => {
                                       const rec = recordsForView[s.id];
-                                      const lif =
-                                        studentAttendanceStats[s.id] || {};
+                                      const lif = studentAttendanceStats[s.id] || {};
                                       return (
-                                        <tr
-                                          key={s.id}
-                                          className="even:bg-white/10"
-                                        >
+                                        <tr key={s.id} className="even:bg-white/10">
                                           <td className="px-3 py-2 text-white">
                                             {s.studentId}
                                           </td>
@@ -927,7 +924,7 @@ export default function AttendancePage() {
                                               <button
                                                 onClick={() =>
                                                   markAttendance(
-                                                    s.id,
+                                                  s.id,
                                                     "present",
                                                     className
                                                   )
@@ -969,8 +966,7 @@ export default function AttendancePage() {
                               <div className="sm:hidden space-y-3">
                                 {classStudents.map((s) => {
                                   const rec = recordsForView[s.id];
-                                  const lif =
-                                    studentAttendanceStats[s.id] || {};
+                                  const lif = studentAttendanceStats[s.id] || {};
                                   return (
                                     <div
                                       key={s.id}
@@ -999,17 +995,13 @@ export default function AttendancePage() {
                                       </div>
                                       <div className="grid grid-cols-2 gap-2 mt-3 text-center">
                                         <div className="bg-white/5 rounded-lg p-2">
-                                          <p className="text-xs text-white/60">
-                                            Present
-                                          </p>
+                                          <p className="text-xs text-white/60">Present</p>
                                           <p className="font-bold text-white">
                                             {lif.timesPresent || 0}
                                           </p>
                                         </div>
                                         <div className="bg-white/5 rounded-lg p-2">
-                                          <p className="text-xs text-white/60">
-                                            Absent
-                                          </p>
+                                          <p className="text-xs text-white/60">Absent</p>
                                           <p className="font-bold text-white">
                                             {lif.timesAbsent || 0}
                                           </p>
@@ -1018,11 +1010,7 @@ export default function AttendancePage() {
                                       <div className="flex gap-2 mt-3">
                                         <button
                                           onClick={() =>
-                                            markAttendance(
-                                              s.id,
-                                              "present",
-                                              className
-                                            )
+                                            markAttendance(s.id, "present", className)
                                           }
                                           className={`flex-1 p-2 rounded-lg ${
                                             rec?.status === "present"
@@ -1034,11 +1022,7 @@ export default function AttendancePage() {
                                         </button>
                                         <button
                                           onClick={() =>
-                                            markAttendance(
-                                              s.id,
-                                              "absent",
-                                              className
-                                            )
+                                            markAttendance(s.id, "absent", className)
                                           }
                                           className={`flex-1 p-2 rounded-lg ${
                                             rec?.status === "absent"
@@ -1057,7 +1041,7 @@ export default function AttendancePage() {
                           );
                         })}
                       </div>
-                    </div>
+                    </motion.div>
                   </motion.div>
                 );
               })}

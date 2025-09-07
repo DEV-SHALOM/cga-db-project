@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+// src/pages/Students.jsx
+import { useEffect, useMemo, useState } from "react";
 import { FaChevronDown, FaPlus, FaEdit, FaTrash } from "react-icons/fa";
 import { Listbox } from "@headlessui/react";
 import { motion } from "framer-motion";
@@ -14,12 +15,15 @@ import {
   Timestamp,
   getDocs,
   writeBatch,
-  getDoc,
 } from "firebase/firestore";
 import { db } from "../firebase";
 
 // ⬇️ PERMISSION HOOK (make sure the path matches your project)
 import { usePermission } from "../hooks/usePermission";
+
+/* =========================================================
+   Static options & helpers
+   ========================================================= */
 
 const genderOptions = [
   { id: "M", name: "Male" },
@@ -33,13 +37,22 @@ const ENTRY_PERF_OPTIONS = [
   { id: "poor", name: "Poor" },
 ];
 
+// --- helpers to create A/B streams ---
+const makeAB = (prefix, count) =>
+  Array.from({ length: count }, (_, i) => {
+    const n = i + 1;
+    return [`${prefix} ${n} A`, `${prefix} ${n} B`];
+  }).flat();
+
 const classStructure = [
   { section: "Pre-Kg", classes: ["Pre-Kg"] },
-  { section: "Nursery", classes: ["Nursery 1", "Nursery 2", "Nursery 3"] },
-  {
-    section: "Basic",
-    classes: ["Basic 1", "Basic 2", "Basic 3", "Basic 4", "Basic 5"],
-  },
+
+  // Nursery 1–3 with A/B
+  { section: "Nursery", classes: makeAB("Nursery", 3) },
+
+  // Basic 1–5 with A/B
+  { section: "Basic", classes: makeAB("Basic", 5) },
+
   {
     section: "Junior Secondary (JS)",
     classes: ["JS1 A", "JS1 B", "JS2 A", "JS2 B", "JS3 A", "JS3 B"],
@@ -58,6 +71,7 @@ const classStructure = [
 ];
 
 const allClasses = classStructure.flatMap((s) => s.classes);
+const classOptions = allClasses.map((c) => ({ id: c, name: c }));
 
 function formatDateStr(ts) {
   if (!ts) return "";
@@ -76,6 +90,10 @@ function displayEntryPerf(val) {
   const opt = ENTRY_PERF_OPTIONS.find((o) => o.id === val);
   return opt ? opt.name : val;
 }
+
+/* =========================================================
+   UI bits
+   ========================================================= */
 
 function Notification({ message }) {
   return (
@@ -120,7 +138,7 @@ function GlassListbox({
           {selected ? selected.name : placeholder || "Select..."}
           <FaChevronDown className="ml-2 text-white" />
         </Listbox.Button>
-        <Listbox.Options className="absolute mt-1 w-full rounded-xl shadow-2xl bg-gradient-to-tr from-[#1e0447]/80 via-[#372772]/90 to-[#181A2A]/90 backdrop-blur-2xl border border-white/30 z-50">
+        <Listbox.Options className="absolute mt-1 w-full max-h-72 overflow-y-auto rounded-xl shadow-2xl bg-gradient-to-tr from-[#1e0447]/80 via-[#372772]/90 to-[#181A2A]/90 backdrop-blur-2xl border border-white/30 z-50">
           {options.map((option) => (
             <Listbox.Option
               key={option.id}
@@ -140,12 +158,16 @@ function GlassListbox({
   );
 }
 
+/* =========================================================
+   IDs helper
+   ========================================================= */
+
 async function generateStudentId() {
   const studentsSnap = await getDocs(collection(db, "students"));
   const usedNumbers = [];
 
-  studentsSnap.forEach((doc) => {
-    const data = doc.data();
+  studentsSnap.forEach((d) => {
+    const data = d.data();
     if (data.studentId && /^CGA\d{6}$/.test(data.studentId)) {
       const num = parseInt(data.studentId.slice(3), 10);
       usedNumbers.push(num);
@@ -164,78 +186,9 @@ async function generateStudentId() {
   return newId;
 }
 
-function DeleteConfirmationModal({ student, onConfirm, onCancel, isDeleting }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/40 flex items-center justify-center z-[999] p-4"
-    >
-      <motion.div
-        initial={{ scale: 0.95, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.95, opacity: 0 }}
-        className="w-full max-w-[95vw] sm:max-w-md bg-gradient-to-tr from-white/10 via-[#3e1c7c]/20 to-[#372772]/20 backdrop-blur-2xl p-6 rounded-2xl shadow-2xl border border-white/30"
-      >
-        <div className="mb-6">
-          <p className="text-white">
-            Are you sure you want to delete{" "}
-            <span className="font-semibold">{student?.name}</span> (ID:{" "}
-            {student?.studentId})?
-          </p>
-          <p className="text-red-300 mt-2 text-sm">
-            This will permanently delete all student records including attendance and payments.
-          </p>
-        </div>
-        <div className="flex gap-3 justify-end">
-          <button
-            type="button"
-            className="px-4 py-1.5 bg-gray-100 text-white rounded-lg hover:bg-gray-200 transition text-sm disabled:opacity-50"
-            onClick={onCancel}
-            disabled={isDeleting}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="px-5 py-1.5 bg-red-600 text-red-500 font-semibold rounded-lg hover:bg-red-700 transition text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center min-w-[80px]"
-            onClick={onConfirm}
-            disabled={isDeleting}
-          >
-            {isDeleting ? (
-              <>
-                <svg
-                  className="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  ></circle>
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  ></path>
-                </svg>
-                Deleting...
-              </>
-            ) : (
-              "Delete"
-            )}
-          </button>
-        </div>
-      </motion.div>
-    </motion.div>
-  );
-}
+/* =========================================================
+   Main Page
+   ========================================================= */
 
 export default function StudentsPage() {
   // ⬇️ PERMISSION GUARD
@@ -245,7 +198,10 @@ export default function StudentsPage() {
   const [openSection, setOpenSection] = useState("");
   const [students, setStudents] = useState({});
   const [showModal, setShowModal] = useState(false);
+
+  // activeClass is what will be saved to Firestore. We also make it editable in the modal now.
   const [activeClass, setActiveClass] = useState("");
+
   const [form, setForm] = useState({
     studentId: "",
     name: "",
@@ -259,6 +215,7 @@ export default function StudentsPage() {
     entryPerformance: "", // stores id: "excellent" | "good" | "fair" | "poor"
     medicalHistoryOrFitness: "", // free text
   });
+
   const [editId, setEditId] = useState(null);
   const [notification, setNotification] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -274,12 +231,12 @@ export default function StudentsPage() {
 
     const unsubscribes = [];
     allClasses.forEach((className) => {
-      const q = query(
+      const qy = query(
         collection(db, "students"),
         where("className", "==", className)
       );
-      const unsub = onSnapshot(q, (snap) => {
-        const arr = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      const unsub = onSnapshot(qy, (snap) => {
+        const arr = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
         arr.sort((a, b) => a.name.localeCompare(b.name));
         setStudents((prev) => ({
           ...prev,
@@ -308,6 +265,20 @@ export default function StudentsPage() {
       </div>
     );
 
+  const resetForm = () =>
+    setForm({
+      studentId: "",
+      name: "",
+      age: "",
+      gender: "M",
+      dateOfEntrance: "",
+      dateOfLeaving: "",
+      reasonForLeaving: "",
+      parentPhone: "",
+      entryPerformance: "",
+      medicalHistoryOrFitness: "",
+    });
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (isSubmitting) return;
@@ -320,7 +291,9 @@ export default function StudentsPage() {
       !form.dateOfEntrance ||
       !form.entryPerformance // ⬅️ require selection
     ) {
-      setNotification("All fields except leaving date/reason are required. Don’t forget entry performance.");
+      setNotification(
+        "All fields except leaving date/reason are required. Don’t forget entry performance."
+      );
       setTimeout(() => setNotification(null), 2500);
       return;
     }
@@ -338,7 +311,7 @@ export default function StudentsPage() {
         name: form.name,
         age: form.age,
         gender: form.gender,
-        className: activeClass,
+        className: activeClass, // ⬅️ editable now
         dateOfEntrance: Timestamp.fromDate(new Date(form.dateOfEntrance)),
         dateOfLeaving: form.dateOfLeaving
           ? Timestamp.fromDate(new Date(form.dateOfLeaving))
@@ -360,18 +333,7 @@ export default function StudentsPage() {
 
       setShowModal(false);
       setEditId(null);
-      setForm({
-        studentId: "",
-        name: "",
-        age: "",
-        gender: "M",
-        dateOfEntrance: "",
-        dateOfLeaving: "",
-        reasonForLeaving: "",
-        parentPhone: "",
-        entryPerformance: "",
-        medicalHistoryOrFitness: "",
-      });
+      resetForm();
     } catch (err) {
       setNotification("Error saving student: " + err.message);
       setTimeout(() => setNotification(null), 3500);
@@ -382,7 +344,7 @@ export default function StudentsPage() {
 
   const handleEdit = (student) => {
     setShowModal(true);
-    setActiveClass(student.className);
+    setActiveClass(student.className); // ⬅️ keep class editable
     setEditId(student.id);
     setForm({
       studentId: student.studentId || "",
@@ -439,8 +401,8 @@ export default function StudentsPage() {
         where("studentId", "==", studentId)
       );
       const feesSnapshot = await getDocs(feesQuery);
-      feesSnapshot.forEach((doc) => {
-        batch.delete(doc.ref);
+      feesSnapshot.forEach((d) => {
+        batch.delete(d.ref);
       });
 
       // Delete all attendance records for this student across all dates
@@ -450,10 +412,10 @@ export default function StudentsPage() {
       let attendanceBatch = writeBatch(db);
       let batchCount = 0;
 
-      for (const doc of attendanceSnapshot.docs) {
-        const records = doc.data().records || {};
+      for (const d of attendanceSnapshot.docs) {
+        const records = d.data().records || {};
         if (records[id]) {
-          const docRef = doc.ref;
+          const docRef = d.ref;
           delete records[id];
 
           if (Object.keys(records).length === 0) {
@@ -501,20 +463,26 @@ export default function StudentsPage() {
       className="min-h-screen w-full py-6 px-2 sm:px-8 pb-24"
     >
       {notification && <Notification message={notification} />}
+
       <div className="max-w-7xl mx-auto font-[Poppins]">
         <motion.h2
           initial={{ y: -20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.1, duration: 0.3 }}
-          className="font-extrabold text-4xl sm:text-5xl text-white mb-10 text-center drop-shadow-lg tracking-wide"
+          className="font-extrabold text-4xl sm:text-5xl text-white mb-6 text-center drop-shadow-lg tracking-wide"
         >
           Student Management
         </motion.h2>
+
+        {/* Sections */}
         <div className="space-y-8">
           {classStructure.map((section) => {
-            const sectionStudents = section.classes.reduce((total, className) => {
-              return total + (students[className]?.length || 0);
-            }, 0);
+            const sectionStudents = section.classes.reduce(
+              (total, className) => {
+                return total + (students[className]?.length || 0);
+              },
+              0
+            );
 
             return (
               <motion.div
@@ -547,7 +515,8 @@ export default function StudentsPage() {
                   <div className="flex items-center gap-3">
                     <span className="tracking-wide">{section.section}</span>
                     <span className="text-sm bg-[#6C4AB6] text-white px-2 py-1 rounded-full">
-                      {sectionStudents} {sectionStudents === 1 ? "student" : "students"}
+                      {sectionStudents}{" "}
+                      {sectionStudents === 1 ? "student" : "students"}
                     </span>
                   </div>
                   <FaChevronDown
@@ -556,13 +525,15 @@ export default function StudentsPage() {
                     }`}
                   />
                 </button>
-                <div
-                  className={`transition-all duration-300 overflow-hidden ${
-                    openSection === section.section ? "py-2" : "max-h-0 p-0"
-                  }`}
-                  style={{
-                    maxHeight: openSection === section.section ? "2000px" : "0px",
+
+                <motion.div
+                  initial={false}
+                  animate={{
+                    height: openSection === section.section ? "auto" : 0,
+                    opacity: openSection === section.section ? 1 : 0,
                   }}
+                  transition={{ duration: 0.35, ease: [0.2, 0, 0, 1] }}
+                  style={{ overflow: "hidden" }}
                 >
                   <div className="flex flex-col gap-6 mt-3">
                     {section.classes.map((className) => (
@@ -570,25 +541,13 @@ export default function StudentsPage() {
                         key={className}
                         className={className}
                         students={students[className] || []}
-                        // ⬇️ ONLY PASS HANDLERS IF ALLOWED
                         onAdd={
                           canStudents
                             ? () => {
                                 setShowModal(true);
                                 setActiveClass(className);
                                 setEditId(null);
-                                setForm({
-                                  studentId: "",
-                                  name: "",
-                                  age: "",
-                                  gender: "M",
-                                  dateOfEntrance: "",
-                                  dateOfLeaving: "",
-                                  reasonForLeaving: "",
-                                  parentPhone: "",
-                                  entryPerformance: "",
-                                  medicalHistoryOrFitness: "",
-                                });
+                                resetForm();
                               }
                             : null
                         }
@@ -598,7 +557,7 @@ export default function StudentsPage() {
                       />
                     ))}
                   </div>
-                </div>
+                </motion.div>
               </motion.div>
             );
           })}
@@ -622,7 +581,7 @@ export default function StudentsPage() {
               </h3>
               <form
                 onSubmit={handleSubmit}
-                className="flex flex-col gap-3 max-h-[70vh] overflow-y-auto pr-2"
+                className="flex flex-col gap-3 max-h-[70vh] overflow-y-auto pr-2 custom-scroll"
               >
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -641,12 +600,14 @@ export default function StudentsPage() {
                     <label className="block text-xs text-white mb-1">
                       Class
                     </label>
-                    <input
-                      type="text"
+                    {/* ⬇️ Editable class selector */}
+                    <GlassListbox
                       value={activeClass}
-                      readOnly
-                      disabled
-                      className="border border-[#e7e2f8] rounded-lg px-4 py-2 bg-white/20 text-white w-full font-semibold cursor-not-allowed text-sm"
+                      onChange={setActiveClass}
+                      options={classOptions}
+                      placeholder="Select class"
+                      className="text-sm"
+                      disabled={isSubmitting}
                     />
                   </div>
                 </div>
@@ -701,7 +662,7 @@ export default function StudentsPage() {
                   </div>
                 </div>
 
-                {/* ⬇️ NEW: Academic performance at entry point */}
+                {/* ⬇️ Academic performance at entry point */}
                 <div>
                   <label className="block text-xs text-white mb-1">
                     Academic performance at entry point
@@ -718,7 +679,7 @@ export default function StudentsPage() {
                   />
                 </div>
 
-                {/* ⬇️ NEW: Medical history / fitness */}
+                {/* ⬇️ Medical history / fitness */}
                 <div>
                   <label className="block text-xs text-white mb-1">
                     Medical history / fitness
@@ -819,18 +780,7 @@ export default function StudentsPage() {
                     onClick={() => {
                       setShowModal(false);
                       setEditId(null);
-                      setForm({
-                        studentId: "",
-                        name: "",
-                        age: "",
-                        gender: "M",
-                        dateOfEntrance: "",
-                        dateOfLeaving: "",
-                        reasonForLeaving: "",
-                        parentPhone: "",
-                        entryPerformance: "",
-                        medicalHistoryOrFitness: "",
-                      });
+                      resetForm();
                     }}
                     disabled={isSubmitting}
                   >
@@ -891,9 +841,107 @@ export default function StudentsPage() {
           />
         )}
       </div>
+
+      {/* Sidebar scrollbar theme (fixed placement) */}
+      <style>{`
+        .custom-scroll::-webkit-scrollbar { width: 8px; }
+        .custom-scroll::-webkit-scrollbar-track { background: transparent; }
+        .custom-scroll::-webkit-scrollbar-thumb {
+          background: rgba(128, 85, 247, 0.35);
+          border-radius: 9999px;
+          border: 2px solid rgba(255,255,255,0.15);
+        }
+        .custom-scroll:hover::-webkit-scrollbar-thumb {
+          background: rgba(128, 85, 247, 0.55);
+        }
+        /* Firefox */
+        .custom-scroll { scrollbar-width: thin; scrollbar-color: rgba(128,85,247,0.55) transparent; }
+      `}</style>
     </motion.div>
   );
 }
+
+/* =========================================================
+   Delete Modal
+   ========================================================= */
+
+function DeleteConfirmationModal({ student, onConfirm, onCancel, isDeleting }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 bg-black/40 flex items-center justify-center z-[999] p-4"
+    >
+      <motion.div
+        initial={{ scale: 0.95, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.95, opacity: 0 }}
+        className="w-full max-w-[95vw] sm:max-w-md bg-gradient-to-tr from-white/10 via-[#3e1c7c]/20 to-[#372772]/20 backdrop-blur-2xl p-6 rounded-2xl shadow-2xl border border-white/30"
+      >
+        <div className="mb-6">
+          <p className="text-white">
+            Are you sure you want to delete{" "}
+            <span className="font-semibold">{student?.name}</span> (ID:{" "}
+            {student?.studentId})?
+          </p>
+          <p className="text-red-300 mt-2 text-sm">
+            This will permanently delete all student records including
+            attendance and payments.
+          </p>
+        </div>
+        <div className="flex gap-3 justify-end">
+          <button
+            type="button"
+            className="px-4 py-1.5 bg-gray-100 text-white rounded-lg hover:bg-gray-200 transition text-sm disabled:opacity-50"
+            onClick={onCancel}
+            disabled={isDeleting}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="px-5 py-1.5 bg-red-600 text-red-500 font-semibold rounded-lg hover:bg-red-700 transition text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center min-w-[80px]"
+            onClick={onConfirm}
+            disabled={isDeleting}
+          >
+            {isDeleting ? (
+              <>
+                <svg
+                  className="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  ></circle>
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  ></path>
+                </svg>
+                Deleting...
+              </>
+            ) : (
+              "Delete"
+            )}
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+/* =========================================================
+   Section Table (with search)
+   ========================================================= */
 
 function StudentSectionTable({
   className,
@@ -903,6 +951,23 @@ function StudentSectionTable({
   onDelete,
   deletingIds,
 }) {
+  const [search, setSearch] = useState("");
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return students || [];
+    return (students || []).filter((s) => {
+      const name = String(s.name || "").toLowerCase();
+      const id = String(s.studentId || "").toLowerCase();
+      const phone = String(s.parentPhone || "").toLowerCase();
+      return (
+        name.includes(q) ||
+        id.includes(q) ||
+        (phone && phone.includes(q))
+      );
+    });
+  }, [students, search]);
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -916,18 +981,40 @@ function StudentSectionTable({
             {className}
           </span>
           <span className="text-sm bg-[#6C4AB6] text-white px-2 py-1 rounded-full">
-            {students.length} {students.length === 1 ? "student" : "students"}
+            {filtered.length} / {students.length}
           </span>
         </div>
-        {/* ⬇️ Only show Add button if handler is passed (has permission) */}
-        {onAdd && (
-          <button
-            className="flex items-center gap-2 text-sm px-4 py-2 rounded-lg bg-[#6C4AB6] text-white font-semibold hover:bg-[#8055f7] shadow-lg whitespace-nowrap"
-            onClick={onAdd}
-          >
-            <FaPlus /> Add Student
-          </button>
-        )}
+
+        {/* Search + Add */}
+        <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+          <div className="relative">
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search students (name, ID, phone)"
+              className="w-full sm:w-72 border border-[#e7e2f8] rounded-lg px-3 py-2 bg-white/10 text-white text-sm placeholder-white/70 focus:outline-none focus:ring-2 focus:ring-[#8055f7]"
+            />
+            {search && (
+              <button
+                onClick={() => setSearch("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-white/70 hover:text-white text-xs"
+                title="Clear"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+
+          {onAdd && (
+            <button
+              className="flex items-center gap-2 text-sm px-4 py-2 rounded-lg bg-[#6C4AB6] text-white font-semibold hover:bg-[#8055f7] shadow-lg whitespace-nowrap"
+              onClick={onAdd}
+            >
+              <FaPlus /> Add Student
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Desktop Table View */}
@@ -954,7 +1041,6 @@ function StudentSectionTable({
                 <th className="px-3 py-2 font-semibold text-[#cfcfcf] text-left whitespace-nowrap">
                   Entrance
                 </th>
-                {/* ⬇️ NEW COLS */}
                 <th className="px-3 py-2 font-semibold text-[#cfcfcf] text-left whitespace-nowrap">
                   Entry Perf.
                 </th>
@@ -967,7 +1053,7 @@ function StudentSectionTable({
               </tr>
             </thead>
             <tbody className="divide-y divide-white/10">
-              {(students || []).map((s) => (
+              {(filtered || []).map((s) => (
                 <motion.tr
                   key={s.id}
                   initial={{ opacity: 0 }}
@@ -998,11 +1084,13 @@ function StudentSectionTable({
                   <td className="px-3 py-2 text-[#ffffff] whitespace-nowrap text-sm capitalize">
                     {displayEntryPerf(s.academicPerformanceAtEntryPoint)}
                   </td>
-                  <td className="px-3 py-2 text-[#ffffff] text-sm max-w-[280px] truncate" title={s.medicalHistoryOrFitness || ""}>
+                  <td
+                    className="px-3 py-2 text-[#ffffff] text-sm max-w-[280px] truncate"
+                    title={s.medicalHistoryOrFitness || ""}
+                  >
                     {s.medicalHistoryOrFitness || "-"}
                   </td>
                   <td className="px-3 py-2 whitespace-nowrap">
-                    {/* ⬇️ Only show action buttons if handlers exist */}
                     {onEdit || onDelete ? (
                       <div className="flex gap-2">
                         {onEdit && (
@@ -1032,13 +1120,15 @@ function StudentSectionTable({
                   </td>
                 </motion.tr>
               ))}
-              {(students || []).length === 0 && (
+              {(filtered || []).length === 0 && (
                 <tr>
                   <td
                     colSpan={9}
                     className="text-center py-8 text-[#ffffff] font-semibold text-sm"
                   >
-                    No students yet
+                    {students.length === 0
+                      ? "No students yet"
+                      : "No matches for your search"}
                   </td>
                 </tr>
               )}
@@ -1049,7 +1139,7 @@ function StudentSectionTable({
 
       {/* Mobile Card View */}
       <div className="sm:hidden space-y-3">
-        {(students || []).map((s) => (
+        {(filtered || []).map((s) => (
           <motion.div
             key={s.id}
             initial={{ opacity: 0, y: 10 }}
@@ -1137,29 +1227,12 @@ function StudentSectionTable({
             )}
           </motion.div>
         ))}
-        {(students || []).length === 0 && (
+        {(filtered || []).length === 0 && (
           <div className="text-center py-8 text-[#ffffff] font-semibold text-sm">
-            No students yet
+            {students.length === 0 ? "No students yet" : "No matches for your search"}
           </div>
         )}
       </div>
     </motion.div>
-
-    
   );
-  {/* Sidebar scrollbar theme */}
-      <style>{`
-        .custom-scroll::-webkit-scrollbar { width: 8px; }
-        .custom-scroll::-webkit-scrollbar-track { background: transparent; }
-        .custom-scroll::-webkit-scrollbar-thumb {
-          background: rgba(128, 85, 247, 0.35);
-          border-radius: 9999px;
-          border: 2px solid rgba(255,255,255,0.15);
-        }
-        .custom-scroll:hover::-webkit-scrollbar-thumb {
-          background: rgba(128, 85, 247, 0.55);
-        }
-        /* Firefox */
-        .custom-scroll { scrollbar-width: thin; scrollbar-color: rgba(128,85,247,0.55) transparent; }
-      `}</style>
 }

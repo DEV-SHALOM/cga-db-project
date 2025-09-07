@@ -30,13 +30,19 @@ import { db } from "../firebase";
 import { usePermission } from "../hooks/usePermission";
 import { useActiveTerm } from "../hooks/useActiveTerm";
 
-/* ---------- Class structure ---------- */
+/* ---------- Class structure (Nursery & Basic now A/B arms) ---------- */
+const makeAB = (prefix, count) =>
+  Array.from({ length: count }, (_, i) => {
+    const n = i + 1;
+    return [`${prefix} ${n} A`, `${prefix} ${n} B`];
+  }).flat();
+
 const classStructure = [
   { section: "Pre-Kg", classes: ["Pre-Kg"] },
-  { section: "Nursery", classes: ["Nursery 1", "Nursery 2", "Nursery 3"] },
+  { section: "Nursery", classes: makeAB("Nursery", 3) }, // Nursery 1–3 A/B
   {
     section: "Basic",
-    classes: ["Basic 1", "Basic 2", "Basic 3", "Basic 4", "Basic 5"],
+    classes: makeAB("Basic", 5), // Basic 1–5 A/B
   },
   {
     section: "Junior Secondary (JSS)",
@@ -887,10 +893,15 @@ export default function Teachers() {
                   </button>
                 </div>
 
-                <div
-                  className={`transition-all overflow-hidden ${
-                    openSection === section.section ? "py-2" : "max-h-0"
-                  }`}
+                {/* >>> Framer Motion content with height:auto (no clipping) <<< */}
+                <motion.div
+                  initial={false}
+                  animate={{
+                    height: openSection === section.section ? "auto" : 0,
+                    opacity: openSection === section.section ? 1 : 0,
+                  }}
+                  transition={{ duration: 0.35, ease: [0.2, 0, 0, 1] }}
+                  style={{ overflow: "hidden" }}
                 >
                   <div className="flex flex-col gap-6 mt-3">
                     {section.classes.map((className) => (
@@ -924,7 +935,7 @@ export default function Teachers() {
                       />
                     ))}
                   </div>
-                </div>
+                </motion.div>
               </motion.div>
             );
           })}
