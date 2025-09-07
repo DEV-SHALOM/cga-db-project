@@ -68,6 +68,9 @@ const emptyPrice = LEVELS.reduce((acc, l) => ((acc[l.key] = 0), acc), {});
 const fmt = (n) =>
   typeof n === "number" && !Number.isNaN(n) ? n.toLocaleString() : "0";
 
+// keep numeric-only strings
+const digitsOnly = (v) => (v || "").replace(/[^\d]/g, "");
+
 export default function Inventory() {
   const [inventory, setInventory] = useState([]);
   const [students, setStudents] = useState([]);
@@ -80,7 +83,10 @@ export default function Inventory() {
   const [selectedItem, setSelectedItem] = useState(null);
   const [selectedLevel, setSelectedLevel] = useState(LEVELS[0].key);
   const [selectedStudent, setSelectedStudent] = useState(null);
-  const [quantityToCheckout, setQuantityToCheckout] = useState(1);
+
+  // 👇 quantity now a **string** so typing is smooth on mobile
+  const [quantityToCheckout, setQuantityToCheckout] = useState("1");
+
   const [searchTerm, setSearchTerm] = useState("");
 
   const [creatingFolder, setCreatingFolder] = useState(false);
@@ -108,7 +114,6 @@ export default function Inventory() {
   };
 
   // ---------- GLOBAL subscriptions (not term-scoped) ----------
-  // Students should persist across terms: subscribe once, no termId dependency
   useEffect(() => {
     const unsubStudents = onSnapshot(
       collection(db, "students"),
@@ -121,7 +126,8 @@ export default function Inventory() {
               name: (s.name || `${s.firstName || ""} ${s.lastName || ""}`).trim(),
               studentId: s.studentId || s.admNo || d.id,
               className: s.className || s.currentClass || s.class || "",
-              parentPhone: s.parentPhone || s.parentPhoneNumber || s.guardianPhone || "",
+              parentPhone:
+                s.parentPhone || s.parentPhoneNumber || s.guardianPhone || "",
             };
           })
           .sort((a, b) => a.name.localeCompare(b.name));
@@ -140,7 +146,6 @@ export default function Inventory() {
     setError(null);
     if (!termId) return;
 
-    // inventory (folders/items) can be global; if you want it before term loads, move this to the global effect
     const unsubInv = onSnapshot(
       collection(db, "inventory"),
       (snap) => {
@@ -333,7 +338,9 @@ export default function Inventory() {
   const handleCheckOut = async () => {
     if (!selectedItem) return notify("Pick an item", "error");
     if (!selectedStudent) return notify("Pick a student", "error");
-    const qty = Number(quantityToCheckout) || 0;
+
+    // 👇 sanitize and guard
+    const qty = Math.max(1, Number(digitsOnly(quantityToCheckout) || 0));
     if (qty <= 0) return notify("Quantity must be > 0", "error");
 
     setLoading(true);
@@ -343,12 +350,9 @@ export default function Inventory() {
       if (!snap.exists()) throw new Error("Item not found");
 
       const data = snap.data();
-      const current = data.stockByLevel?.[selectedLevel] || 0;
+      const current = Number(data.stockByLevel?.[selectedLevel] || 0);
       if (qty > current)
-        return notify(
-          `Only ${current} available for ${selectedLevel}`,
-          "error"
-        );
+        return notify(`Only ${current} available for ${selectedLevel}`, "error");
 
       await updateDoc(ref, {
         [`stockByLevel.${selectedLevel}`]: current - qty,
@@ -372,9 +376,9 @@ export default function Inventory() {
         parentPhone: selectedStudent.parentPhone,
         action: "checked_out",
         date: Timestamp.now(),
-        termId,                 // ⬅️ term-bound money flow
+        termId,
         returned: false,
-        paid: unitPrice ? false : true, // free items auto-paid
+        paid: unitPrice ? false : true,
       });
 
       const siQ = query(
@@ -411,7 +415,8 @@ export default function Inventory() {
         });
       }
 
-      setQuantityToCheckout(1);
+      // reset to default
+      setQuantityToCheckout("1");
       notify(
         `Checked out ${qty} × ${data.name} (${selectedLevel}) to ${selectedStudent.name}`
       );
@@ -430,13 +435,11 @@ export default function Inventory() {
 
     setLoading(true);
     try {
-      // mark transaction returned
       await updateDoc(doc(db, "inventoryTransactions", txId), {
         returned: true,
         returnDate: Timestamp.now(),
       });
 
-      // restore stock
       const itemRef = doc(db, "inventory", tx.itemId);
       const itemSnap = await getDoc(itemRef);
       if (itemSnap.exists()) {
@@ -450,7 +453,6 @@ export default function Inventory() {
         });
       }
 
-      // reduce / close studentInventory row
       const siQ = query(
         collection(db, "studentInventory"),
         where("studentId", "==", tx.studentId),
@@ -477,7 +479,6 @@ export default function Inventory() {
         }
       }
 
-      // If payment had been made, issue a refund (and tag with original paymentDate)
       if (tx.paid) {
         const amount = Number(tx.itemPrice || 0) * Number(tx.quantity || 0);
         const refundDate = Timestamp.now();
@@ -492,9 +493,9 @@ export default function Inventory() {
           itemPrice: tx.itemPrice || 0,
           amount,
           refundDate,
-          paymentDate: tx.paymentDate || null, // for dashboard logic
+          paymentDate: tx.paymentDate || null,
           reason: "return",
-          termId,                               // ⬅️ ADD: keep refunds term-scoped
+          termId,
         };
 
         await updateDoc(doc(db, "inventoryTransactions", txId), {
@@ -558,11 +559,9 @@ export default function Inventory() {
     }
   };
 
-  // Delete a studentInventory row (restore stock, log refund if needed, and DELETE related transaction)
   const deleteStudentInventory = async (row) => {
     setLoading(true);
     try {
-      // If not returned, restore stock
       if (!row.returned) {
         const itemRef = doc(db, "inventory", row.itemId);
         const itemSnap = await getDoc(itemRef);
@@ -579,7 +578,6 @@ export default function Inventory() {
       }
 
       let paymentDate = null;
-      // If there is a linked transaction, fetch it (for paymentDate) then delete it
       if (row.txId) {
         const txRef = doc(db, "inventoryTransactions", row.txId);
         const txSnap = await getDoc(txRef);
@@ -589,7 +587,6 @@ export default function Inventory() {
         }
       }
 
-      // If paid, log a refund (so dashboard stays accurate)
       if (row.paid && Number(row.itemPrice || 0) > 0) {
         const amount = Number(row.itemPrice || 0) * Number(row.quantity || 0);
         const refundDate = Timestamp.now();
@@ -605,18 +602,16 @@ export default function Inventory() {
           itemPrice: row.itemPrice || 0,
           amount,
           refundDate,
-          paymentDate, // critical for dashboard "same-day" rule
+          paymentDate,
           reason: "studentInventory_delete",
-          termId,      // already present earlier — keeping
+          termId,
         });
       }
 
-      // Now delete the linked transaction (if any), as requested
       if (row.txId) {
         await deleteDoc(doc(db, "inventoryTransactions", row.txId));
       }
 
-      // Finally delete the student inventory record
       await deleteDoc(doc(db, "studentInventory", row.id));
 
       notify("Student inventory deleted");
@@ -644,7 +639,7 @@ export default function Inventory() {
     return <div className="p-6 text-white/80">Loading active term…</div>;
   if (error)
     return (
-      <div className="p-6 text-red-300">
+      <div className="p-6 text-red-600">
         Can’t load inventory: {error.message}
       </div>
     );
@@ -656,8 +651,8 @@ export default function Inventory() {
           <div
             className={`px-4 py-2 rounded-xl backdrop-blur-md border shadow ${
               notif.type === "error"
-                ? "bg-red-500/20 border-red-400 text-red-200"
-                : "bg-green-500/20 border-green-400 text-green-100"
+                ? "bg-red-500/20 border-red-400 text-red-600"
+                : "bg-green-500/20 border-green-400 text-green-400"
             }`}
           >
             {notif.msg}
@@ -745,7 +740,7 @@ export default function Inventory() {
                     + Subfolder
                   </button>
                   <button
-                    className="text-xs text-red-300 hover:text-red-200"
+                    className="text-xs text-red-600 hover:text-red-600"
                     onClick={() =>
                       setShowDeleteConfirm({ type: "folder", id: f.id })
                     }
@@ -821,7 +816,7 @@ export default function Inventory() {
                         <Edit size={12} /> Edit
                       </button>
                       <button
-                        className="text-xs bg-red-500/20 text-red-300 hover:bg-red-500/30 px-2 py-1 rounded flex items-center gap-1"
+                        className="text-xs bg-red-500/20 text-red-600 hover:bg-red-500/30 px-2 py-1 rounded flex items-center gap-1"
                         onClick={(e) => {
                           e.stopPropagation();
                           setShowDeleteConfirm({ type: "item", id: it.id });
@@ -936,20 +931,22 @@ export default function Inventory() {
                             Stock
                           </label>
                           <input
-                            type="number"
-                            min="0"
+                            type="text"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
                             placeholder="0"
                             className="w-full bg-white/10 border border-white/20 rounded px-3 py-2 text-white placeholder-white/50 focus:outline-none focus:ring-1 focus:ring-[#13a1e2]"
-                            value={newItem.stockByLevel[lv.key]}
+                            value={
+                              newItem.stockByLevel[lv.key] === 0
+                                ? ""
+                                : String(newItem.stockByLevel[lv.key])
+                            }
                             onChange={(e) =>
                               setNewItem({
                                 ...newItem,
                                 stockByLevel: {
                                   ...newItem.stockByLevel,
-                                  [lv.key]: Math.max(
-                                    0,
-                                    Number(e.target.value || 0)
-                                  ),
+                                  [lv.key]: Number(digitsOnly(e.target.value) || 0),
                                 },
                               })
                             }
@@ -960,21 +957,22 @@ export default function Inventory() {
                             Price (₦)
                           </label>
                           <input
-                            type="number"
-                            min="0"
-                            step="100"
+                            type="text"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
                             placeholder="0"
                             className="w-full bg-white/10 border border-white/20 rounded px-3 py-2 text-white placeholder-white/50 focus:outline-none focus:ring-1 focus:ring-[#13a1e2]"
-                            value={newItem.priceByLevel[lv.key]}
+                            value={
+                              newItem.priceByLevel[lv.key] === 0
+                                ? ""
+                                : String(newItem.priceByLevel[lv.key])
+                            }
                             onChange={(e) =>
                               setNewItem({
                                 ...newItem,
                                 priceByLevel: {
                                   ...newItem.priceByLevel,
-                                  [lv.key]: Math.max(
-                                    0,
-                                    Number(e.target.value || 0)
-                                  ),
+                                  [lv.key]: Number(digitsOnly(e.target.value) || 0),
                                 },
                               })
                             }
@@ -1099,20 +1097,22 @@ export default function Inventory() {
                             Stock
                           </label>
                           <input
-                            type="number"
-                            min="0"
+                            type="text"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
                             placeholder="0"
                             className="w-full bg-white/10 border border-white/20 rounded px-3 py-2 text-white placeholder-white/50 focus:outline-none focus:ring-1 focus:ring-[#13a1e2]"
-                            value={editingItem.stockByLevel?.[lv.key] ?? 0}
+                            value={
+                              (editingItem.stockByLevel?.[lv.key] ?? 0) === 0
+                                ? ""
+                                : String(editingItem.stockByLevel?.[lv.key] ?? 0)
+                            }
                             onChange={(e) =>
                               setEditingItem({
                                 ...editingItem,
                                 stockByLevel: {
                                   ...(editingItem.stockByLevel || {}),
-                                  [lv.key]: Math.max(
-                                    0,
-                                    Number(e.target.value || 0)
-                                  ),
+                                  [lv.key]: Number(digitsOnly(e.target.value) || 0),
                                 },
                               })
                             }
@@ -1123,21 +1123,22 @@ export default function Inventory() {
                             Price (₦)
                           </label>
                           <input
-                            type="number"
-                            min="0"
-                            step="100"
+                            type="text"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
                             placeholder="0"
                             className="w-full bg-white/10 border border-white/20 rounded px-3 py-2 text-white placeholder-white/50 focus:outline-none focus:ring-1 focus:ring-[#13a1e2]"
-                            value={editingItem.priceByLevel?.[lv.key] ?? 0}
+                            value={
+                              (editingItem.priceByLevel?.[lv.key] ?? 0) === 0
+                                ? ""
+                                : String(editingItem.priceByLevel?.[lv.key] ?? 0)
+                            }
                             onChange={(e) =>
                               setEditingItem({
                                 ...editingItem,
                                 priceByLevel: {
                                   ...(editingItem.priceByLevel || {}),
-                                  [lv.key]: Math.max(
-                                    0,
-                                    Number(e.target.value || 0)
-                                  ),
+                                  [lv.key]: Number(digitsOnly(e.target.value) || 0),
                                 },
                               })
                             }
@@ -1230,16 +1231,19 @@ export default function Inventory() {
                       Quantity
                     </label>
                     <input
-                      type="number"
-                      min="1"
-                      step="1"
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      placeholder="1"
                       className="w-full bg-white/10 border border-white/20 rounded px-3 py-2 text-white placeholder-white/50 focus:outline-none focus:ring-1 focus:ring-[#13a1e2]"
                       value={quantityToCheckout}
                       onChange={(e) =>
-                        setQuantityToCheckout(
-                          Math.max(1, Number(e.target.value || 1))
-                        )
+                        setQuantityToCheckout(digitsOnly(e.target.value))
                       }
+                      onBlur={(e) => {
+                        const v = digitsOnly(e.target.value);
+                        setQuantityToCheckout(v ? v : "1");
+                      }}
                     />
                   </div>
                 </div>
@@ -1341,10 +1345,7 @@ export default function Inventory() {
           <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1 custom-scroll">
             {studentInventory.length === 0 ? (
               <div className="text-white/60 text-center py-8">
-                <ClipboardList
-                  size={32}
-                  className="mx-auto mb-2 text-white/30"
-                />
+                <ClipboardList size={32} className="mx-auto mb-2 text-white/30" />
                 No inventory records yet
               </div>
             ) : (
@@ -1373,10 +1374,7 @@ export default function Inventory() {
                         <div className="text-white font-medium">
                           {r.itemName}
                           {r.size && (
-                            <span className="text-white/70">
-                              {" "}
-                              • Size: {r.size}
-                            </span>
+                            <span className="text-white/70"> • Size: {r.size}</span>
                           )}
                           <span className="text-white/70"> • {r.level}</span>
                         </div>
@@ -1387,23 +1385,20 @@ export default function Inventory() {
                           Qty: {r.quantity} • Class: {r.className}
                         </div>
 
-                        {/* Status */}
                         {Number(r.itemPrice || 0) > 0 && (
                           <>
                             {!r.returned ? (
                               <div
                                 className={`text-xs mt-1 ${
-                                  r.paid ? "text-green-300" : "text-yellow-300"
+                                  r.paid ? "text-green-400" : "text-yellow-300"
                                 }`}
                               >
                                 ₦{fmt(total)} — {r.paid ? "Paid" : "Pending"}
                               </div>
                             ) : (
-                              <div className="text-xs mt-1 text-green-300">
+                              <div className="text-xs mt-1 text-green-400">
                                 ₦{fmt(total)} —{" "}
-                                {r.refunded
-                                  ? "Returned (Refunded)"
-                                  : "Returned"}
+                                {r.refunded ? "Returned (Refunded)" : "Returned"}
                               </div>
                             )}
                           </>
@@ -1433,7 +1428,7 @@ export default function Inventory() {
                         {!r.returned && (
                           <button
                             onClick={() => tx && handleReturn(tx.id)}
-                            className="text-xs bg-green-500/20 text-green-300 hover:bg-green-500/30 px-2 py-1 rounded flex items-center gap-1"
+                            className="text-xs bg-green-500/20 text-green-400 hover:bg-green-500/30 px-2 py-1 rounded flex items-center gap-1"
                           >
                             <ArrowLeftRight size={12} /> Return
                           </button>
@@ -1446,7 +1441,7 @@ export default function Inventory() {
                               payload: r,
                             })
                           }
-                          className="text-xs bg-red-500/20 text-red-300 hover:bg-red-500/30 px-2 py-1 rounded flex items-center gap-1"
+                          className="text-xs bg-red-500/20 text-red-600 hover:bg-red-500/30 px-2 py-1 rounded flex items-center gap-1"
                         >
                           <Trash2 size={12} /> Delete
                         </button>
@@ -1463,7 +1458,7 @@ export default function Inventory() {
       {/* delete confirm */}
       {showDeleteConfirm && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[9998]">
-          <div className="bg-white/10 border border-white/20 rounded-2xl p-6 w-full max-w-sm">
+          <div className="bg-white/10 border border-white/20 rounded-2xl p-6 w/full max-w-sm">
             <div className="text-white text-lg font-semibold mb-2">
               Confirm action
             </div>
@@ -1482,7 +1477,7 @@ export default function Inventory() {
                 Cancel
               </button>
               <button
-                className="px-4 py-2 rounded bg-red-600 text-white hover:bg-red-700 flex items-center justify-center gap-2"
+                className="px-4 py-2 rounded bg-red-600 text-red-600 hover:bg-red-700 flex items-center justify-center gap-2"
                 disabled={loading}
                 onClick={async () => {
                   if (showDeleteConfirm.type === "item") {

@@ -93,6 +93,50 @@ function Notification({ message }) {
   );
 }
 
+/* -------------------------- CLASS HEADER UI --------------------------- */
+function ClassHeader({ name, total, present, absent }) {
+  return (
+    <div className="mb-4 rounded-xl border border-white/15 bg-white/5 px-3 py-2">
+      {/* Row 1: name + total */}
+      <div className="flex items-center gap-3 min-w-0">
+        <div className="flex-1 min-w-0">
+          <h3
+            className="text-white font-semibold text-base sm:text-lg truncate"
+            title={name}
+          >
+            {name}
+          </h3>
+        </div>
+
+        {/* total pill — never wrap */}
+        <div
+          className="shrink-0 whitespace-nowrap inline-flex items-center gap-2 rounded-full border border-white/20 bg-[#6C4AB6]/40 px-2.5 py-1 text-white text-xs sm:text-sm"
+          title={`${total} ${total === 1 ? "student" : "students"}`}
+        >
+          <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-white/20 text-[11px] font-bold">
+            {total}
+          </span>
+          <span className="hidden sm:inline">
+            {total === 1 ? "student" : "students"}
+          </span>
+        </div>
+      </div>
+
+      {/* Row 2: present/absent chips */}
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <span className="inline-flex items-center gap-1 rounded-full bg-green-500/15 text-green-300 px-2.5 py-1 text-xs font-semibold">
+          <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
+          {present} <span className="hidden sm:inline">Present</span>
+        </span>
+        <span className="inline-flex items-center gap-1 rounded-full bg-red-500/15 text-red-300 px-2.5 py-1 text-xs font-semibold">
+          <span className="h-1.5 w-1.5 rounded-full bg-red-400" />
+          {absent} <span className="hidden sm:inline">Absent</span>
+        </span>
+      </div>
+    </div>
+  );
+}
+
 /* ---------------------------- MAIN COMPONENT --------------------------- */
 export default function AttendancePage() {
   const termId = useActiveTerm(); // 👈 current active term
@@ -650,7 +694,7 @@ export default function AttendancePage() {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.3 }}
-      className="min-h-screen w-full py-6 px-2 sm:px-8 pb-24 relative"
+      className="min-h-screen w-full py-6 px-2 sm:px-8 pb-24 relative z-2"
     >
       {notification && <Notification message={notification} />}
 
@@ -660,7 +704,7 @@ export default function AttendancePage() {
         </motion.h2>
 
         {/* Top bar: class selector + date + actions */}
-        <div className="mb-8 bg-white/10 border border-white/20 rounded-2xl p-6 backdrop-blur-md relative z-[2000]">
+        <div className="mb-8 bg-white/10 border border-white/20 rounded-2xl p-6 backdrop-blur-md relative z-20">
           <div className="flex flex-col lg:flex-row items-center gap-4">
             <div className="w-full sm:w-64 relative z-50">
               <button
@@ -678,7 +722,7 @@ export default function AttendancePage() {
                 <motion.div
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="absolute mt-1 w-full rounded-xl shadow-2xl bg-gradient-to-tr from-[#1e0447]/80 via-[#372772]/90 to-[#181A2A]/90 backdrop-blur-2xl border border-white/30 z-[5000]"
+                  className="absolute mt-1 w-full rounded-xl shadow-2xl bg-gradient-to-tr from-[#1e0447]/80 via-[#372772]/90 to-[#181A2A]/90 backdrop-blur-2xl border border-white/30 z-50"
                 >
                   {classStructure.map((section) => {
                     const stats = calculateSectionAttendance(section);
@@ -744,7 +788,7 @@ export default function AttendancePage() {
                 return (
                   <motion.div
                     key={section.section}
-                    className="relative z-0 rounded-2xl bg-gradient-to-tr from-white/10 via-[#3e1c7c]/20 to-[#372772]/20 backdrop-blur-2xl shadow-2xl border border-white/30 p-6"
+                    className="relative z-10 rounded-2xl bg-gradient-to-tr from-white/10 via-[#3e1c7c]/20 to-[#372772]/20 backdrop-blur-2xl shadow-2xl border border-white/30 p-6"
                   >
                     <div className="flex justify-between items-center mb-4">
                       <button
@@ -801,7 +845,8 @@ export default function AttendancePage() {
                                 : "bg-green-600/30 cursor-not-allowed opacity-60"
                             }`}
                           >
-                            <span className="font-bold">✓</span> Mark All Present
+                            <span className="font-bold">✓</span> Mark All
+                            Present
                           </button>
 
                           <button
@@ -824,7 +869,7 @@ export default function AttendancePage() {
                       );
                     })()}
 
-                    {/* >>> This is the FIX: use motion.div with height:auto so long class lists never clip <<< */}
+                    {/* Collapsible section body */}
                     <motion.div
                       initial={false}
                       animate={{
@@ -836,59 +881,61 @@ export default function AttendancePage() {
                     >
                       <div className="flex flex-col gap-6 mt-3">
                         {section.classes.map((className) => {
-                          const classStudents = (students[className] || []).filter(
-                            (s) => !!s.studentId
-                          );
+                          const classStudents = (
+                            students[className] || []
+                          ).filter((s) => !!s.studentId);
                           const stats = calculateClassAttendance(className);
                           return (
                             <div
                               key={className}
-                              className="rounded-2xl backdrop-blur-2xl shadow-xl border border-white/20 p-4 sm:p-6"
+                              className="rounded-2xl backdrop-blur-2xl shadow-xl border border-white/20 p-4 sm:p-6 overflow-visible"
                             >
-                              <div className="flex justify-between items-center mb-4">
-                                <span className="text-lg sm:text-xl font-bold text-white">
-                                  {className}
-                                  <span className="text-sm bg-[#6C4AB6] text-white px-2 py-1 rounded-full ml-2">
-                                    {stats.total}{" "}
-                                    {stats.total === 1 ? "student" : "students"}
-                                  </span>
-                                </span>
-                                <div className="flex gap-4">
-                                  <div className="text-green-400 text-sm sm:text-base">
-                                    <span className="font-bold">
-                                      {stats.present}
-                                    </span>{" "}
-                                    Present
-                                  </div>
-                                  <div className="text-red-400 text-sm sm:text-base">
-                                    <span className="font-bold">
-                                      {stats.absent}
-                                    </span>{" "}
-                                    Absent
-                                  </div>
-                                </div>
-                              </div>
+                              {/* ✅ New compact, resilient header */}
+                              <ClassHeader
+                                name={className}
+                                total={stats.total}
+                                present={stats.present}
+                                absent={stats.absent}
+                              />
 
                               {/* Desktop table */}
                               <div className="hidden sm:block w-full overflow-x-auto">
                                 <table className="w-full text-sm md:text-base rounded-xl">
                                   <thead>
                                     <tr className="bg-gradient-to-r from-[#1e0447]/90 to-[#372772]/90">
-                                      <th className="px-3 py-2 text-left">ID</th>
-                                      <th className="px-3 py-2 text-left">Name</th>
-                                      <th className="px-3 py-2 text-center">Status</th>
-                                      <th className="px-3 py-2 text-left">Time</th>
-                                      <th className="px-3 py-2 text-center">Present</th>
-                                      <th className="px-3 py-2 text-center">Absent</th>
-                                      <th className="px-3 py-2 text-left">Actions</th>
+                                      <th className="px-3 py-2 text-left">
+                                        ID
+                                      </th>
+                                      <th className="px-3 py-2 text-left">
+                                        Name
+                                      </th>
+                                      <th className="px-3 py-2 text-center">
+                                        Status
+                                      </th>
+                                      <th className="px-3 py-2 text-left">
+                                        Time
+                                      </th>
+                                      <th className="px-3 py-2 text-center">
+                                        Present
+                                      </th>
+                                      <th className="px-3 py-2 text-center">
+                                        Absent
+                                      </th>
+                                      <th className="px-3 py-2 text-left">
+                                        Actions
+                                      </th>
                                     </tr>
                                   </thead>
                                   <tbody className="divide-y divide-white/10">
                                     {classStudents.map((s) => {
                                       const rec = recordsForView[s.id];
-                                      const lif = studentAttendanceStats[s.id] || {};
+                                      const lif =
+                                        studentAttendanceStats[s.id] || {};
                                       return (
-                                        <tr key={s.id} className="even:bg-white/10">
+                                        <tr
+                                          key={s.id}
+                                          className="even:bg-white/10"
+                                        >
                                           <td className="px-3 py-2 text-white">
                                             {s.studentId}
                                           </td>
@@ -924,7 +971,7 @@ export default function AttendancePage() {
                                               <button
                                                 onClick={() =>
                                                   markAttendance(
-                                                  s.id,
+                                                    s.id,
                                                     "present",
                                                     className
                                                   )
@@ -966,7 +1013,8 @@ export default function AttendancePage() {
                               <div className="sm:hidden space-y-3">
                                 {classStudents.map((s) => {
                                   const rec = recordsForView[s.id];
-                                  const lif = studentAttendanceStats[s.id] || {};
+                                  const lif =
+                                    studentAttendanceStats[s.id] || {};
                                   return (
                                     <div
                                       key={s.id}
@@ -995,13 +1043,17 @@ export default function AttendancePage() {
                                       </div>
                                       <div className="grid grid-cols-2 gap-2 mt-3 text-center">
                                         <div className="bg-white/5 rounded-lg p-2">
-                                          <p className="text-xs text-white/60">Present</p>
+                                          <p className="text-xs text-white/60">
+                                            Present
+                                          </p>
                                           <p className="font-bold text-white">
                                             {lif.timesPresent || 0}
                                           </p>
                                         </div>
                                         <div className="bg-white/5 rounded-lg p-2">
-                                          <p className="text-xs text-white/60">Absent</p>
+                                          <p className="text-xs text-white/60">
+                                            Absent
+                                          </p>
                                           <p className="font-bold text-white">
                                             {lif.timesAbsent || 0}
                                           </p>
@@ -1010,7 +1062,11 @@ export default function AttendancePage() {
                                       <div className="flex gap-2 mt-3">
                                         <button
                                           onClick={() =>
-                                            markAttendance(s.id, "present", className)
+                                            markAttendance(
+                                              s.id,
+                                              "present",
+                                              className
+                                            )
                                           }
                                           className={`flex-1 p-2 rounded-lg ${
                                             rec?.status === "present"
@@ -1022,7 +1078,11 @@ export default function AttendancePage() {
                                         </button>
                                         <button
                                           onClick={() =>
-                                            markAttendance(s.id, "absent", className)
+                                            markAttendance(
+                                              s.id,
+                                              "absent",
+                                              className
+                                            )
                                           }
                                           className={`flex-1 p-2 rounded-lg ${
                                             rec?.status === "absent"

@@ -39,11 +39,8 @@ const makeAB = (prefix, count) =>
 
 const classStructure = [
   { section: "Pre-Kg", classes: ["Pre-Kg"] },
-  { section: "Nursery", classes: makeAB("Nursery", 3) }, // Nursery 1–3 A/B
-  {
-    section: "Basic",
-    classes: makeAB("Basic", 5), // Basic 1–5 A/B
-  },
+  { section: "Nursery", classes: makeAB("Nursery", 3) },
+  { section: "Basic", classes: makeAB("Basic", 5) },
   {
     section: "Junior Secondary (JSS)",
     classes: ["JSS1 A", "JSS1 B", "JSS2 A", "JSS2 B", "JSS3 A", "JSS3 B"],
@@ -64,8 +61,13 @@ const classStructure = [
 const allClasses = classStructure.flatMap((s) => s.classes);
 
 /* ---------- Small utils ---------- */
-function todayKeyOf(date = new Date()) {
+function dayKeyOf(date = new Date()) {
   return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
+}
+function normalizedDayTimestamp(date) {
+  return Timestamp.fromDate(
+    new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12, 0, 0, 0)
+  );
 }
 function parseKeyToDate(key) {
   try {
@@ -116,13 +118,7 @@ function Toast({ message, type, onClose }) {
   );
 }
 
-function ConfirmModal({
-  open,
-  title = "Confirm",
-  message,
-  onCancel,
-  onConfirm,
-}) {
+function ConfirmModal({ open, title = "Confirm", message, onCancel, onConfirm }) {
   if (!open) return null;
   return (
     <motion.div
@@ -159,7 +155,7 @@ function ConfirmModal({
 /* ---------- Main ---------- */
 export default function Teachers() {
   const { user, perm, hasSection, isAdmin } = usePermission();
-  const termId = useActiveTerm(); // 👈 active term
+  const termId = useActiveTerm();
   const canTeachers = isAdmin() || hasSection("teachers");
 
   const [openSection, setOpenSection] = useState("");
@@ -181,25 +177,31 @@ export default function Teachers() {
     const midnight = new Date(
       now.getFullYear(),
       now.getMonth(),
-      now.getDate() + 1
+      now.getDate() + 1,
+      0,
+      0,
+      1
     );
-    const msUntilMidnight = midnight.getTime() - now.getTime() + 1000;
+    const msUntilMidnight = midnight.getTime() - now.getTime();
     const timer = setTimeout(() => setViewDate(new Date()), msUntilMidnight);
     return () => clearTimeout(timer);
   }, [viewDate]);
 
   const [pageError, setPageError] = useState("");
-
-  // Toast
   const [toast, setToast] = useState({ message: "", type: "" });
+  useEffect(() => {
+    if (toast.message) {
+      const t = setTimeout(() => setToast({ message: "", type: "" }), 3000);
+      return () => clearTimeout(t);
+    }
+  }, [toast]);
 
-  // Confirm delete
   const [confirmState, setConfirmState] = useState({
     open: false,
     teacher: null,
   });
 
-  // Calc modal (unchanged)
+  // Calc modal
   const [showCalc, setShowCalc] = useState(false);
   const [calcStart, setCalcStart] = useState("");
   const [calcEnd, setCalcEnd] = useState("");
@@ -207,13 +209,6 @@ export default function Teachers() {
   const [calcLoading, setCalcLoading] = useState(false);
   const [calcRows, setCalcRows] = useState([]);
   const [calcError, setCalcError] = useState("");
-
-  useEffect(() => {
-    if (toast.message) {
-      const t = setTimeout(() => setToast({ message: "", type: "" }), 3000);
-      return () => clearTimeout(t);
-    }
-  }, [toast]);
 
   // Flatten teachers for quick lookup
   const teacherIndex = useMemo(() => {
@@ -224,7 +219,7 @@ export default function Teachers() {
     return map;
   }, [teachersByClass]);
 
-  // Subscribe teachers per class (global, not term-limited)
+  // Subscribe teachers per class (global)
   useEffect(() => {
     if (perm.loading || !user) return;
     if (!canTeachers) {
@@ -253,10 +248,46 @@ export default function Teachers() {
     return () => unsubs.forEach((u) => u && u());
   }, [perm.loading, canTeachers, user]);
 
-  // Subscribe attendance of the selected day
+  // Ensure today's doc exists (do NOT wipe existing records)
+  useEffect(() => {
+    if (perm.loading || !user || !canTeachers || !termId) return;
+    const key = dayKeyOf(new Date());
+    const ref = doc(db, "teacherDailyAttendance", key);
+    (async () => {
+      try {
+        const snap = await getDoc(ref);
+        if (!snap.exists()) {
+          await setDoc(
+            ref,
+            {
+              date: normalizedDayTimestamp(new Date()),
+              records: {},
+              presentCount: 0,
+              termId,
+            },
+            { merge: true }
+          );
+        } else {
+          const updates = {};
+          if (!snap.data()?.date)
+            updates.date = normalizedDayTimestamp(new Date());
+          if (!snap.data()?.termId) updates.termId = termId;
+          if (Object.keys(updates).length)
+            await setDoc(ref, updates, { merge: true });
+        }
+      } catch (e) {
+        setToast({
+          message: "Failed to initialize today's attendance",
+          type: "error",
+        });
+      }
+    })();
+  }, [perm.loading, user, canTeachers, termId]);
+
+  // Subscribe attendance for the day currently viewed
   useEffect(() => {
     if (perm.loading || !user || !canTeachers) return;
-    const key = todayKeyOf(viewDate);
+    const key = dayKeyOf(viewDate);
     const ref = doc(db, "teacherDailyAttendance", key);
     const unsub = onSnapshot(
       ref,
@@ -275,90 +306,56 @@ export default function Teachers() {
     return () => unsub();
   }, [viewDate, perm.loading, canTeachers, user]);
 
-  // Ensure today's doc exists (with termId)
-  useEffect(() => {
-    if (perm.loading || !user || !canTeachers || !termId) return;
-    const isToday = todayKeyOf(viewDate) === todayKeyOf(new Date());
-    if (!isToday) return;
-    const key = todayKeyOf(new Date());
-    const ref = doc(db, "teacherDailyAttendance", key);
-    getDoc(ref).then((snap) => {
-      if (!snap.exists()) {
-        setDoc(
-          ref,
-          {
-            date: Timestamp.fromDate(new Date()),
-            records: {},
-            presentCount: 0,
-            termId, // 👈 tag day doc with active term
-          },
-          { merge: true }
-        ).catch(() =>
-          setToast({
-            message: "Failed to initialize today's attendance",
-            type: "error",
-          })
-        );
-      } else if (!snap.data()?.termId) {
-        // backfill termId on existing day doc (optional)
-        setDoc(ref, { termId }, { merge: true }).catch(() => {});
-      }
-    });
-  }, [viewDate, perm.loading, canTeachers, user, termId]);
+  /* ---------- Counter helper: handle transitions correctly ---------- */
+  async function applyCountersForStatusChange(tRef, prevStatus, newStatus) {
+    const s = await getDoc(tRef);
+    if (!s.exists()) return;
+    const data = s.data() || {};
 
-  /* ✅ Reset today's status to "not marked" whenever a NEW TERM opens */
-  useEffect(() => {
-    if (perm.loading || !user || !canTeachers || !termId) return;
-    const todayKey = todayKeyOf(new Date());
-    const ref = doc(db, "teacherDailyAttendance", todayKey);
-
-    (async () => {
-      try {
-        const snap = await getDoc(ref);
-        const existingDate =
-          snap.exists() && snap.data()?.date instanceof Timestamp
-            ? snap.data().date
-            : Timestamp.fromDate(parseKeyToDate(todayKey) || new Date());
-
-        // Clear records so UI shows "not marked" for everyone
-        await setDoc(
-          ref,
-          { date: existingDate, records: {}, presentCount: 0, termId },
-          { merge: true }
-        );
-
-        // If the user is viewing today, update local state immediately
-        if (todayKeyOf(viewDate) === todayKey) {
-          setAttendanceRecords({});
-          setPresentToday(0);
-        }
-      } catch (e) {
-        setToast({
-          message: "Couldn't reset today's attendance for new term",
-          type: "warn",
-        });
-      }
-    })();
-    // runs on term change
-  }, [termId, perm.loading, user, canTeachers]); // <-- key dependency is termId
-
-  /* ---------- Per-term counter helpers ---------- */
-  async function ensureTeacherTermCounters(tRef, tSnap, activeTermId) {
-    const data = tSnap.data() || {};
-    if (data.lastTeacherAttendanceTermId !== activeTermId) {
-      await updateDoc(tRef, {
-        termPresent: 0,
-        termAbsent: 0,
-        lastTeacherAttendanceTermId: activeTermId,
-      });
-      return {
-        ...data,
-        termPresent: 0,
-        termAbsent: 0,
-        lastTeacherAttendanceTermId: activeTermId,
-      };
+    if (data.lastTeacherAttendanceTermId !== termId) {
+      data.termPresent = 0;
+      data.termAbsent = 0;
     }
-    return data;
+
+    let mP = Number(data.monthlyPresent ?? data.monthlyAttendance ?? 0);
+    let mA = Number(data.monthlyAbsent ?? 0);
+    let total = Number(data.totalAttendance ?? 0);
+    let tP = Number(data.termPresent ?? 0);
+    let tA = Number(data.termAbsent ?? 0);
+
+    if (!prevStatus) {
+      if (newStatus === "present") {
+        mP += 1;
+        total += 1;
+        tP += 1;
+      } else if (newStatus === "absent") {
+        mA += 1;
+        tA += 1;
+      }
+    } else if (prevStatus !== newStatus) {
+      if (prevStatus === "present" && newStatus === "absent") {
+        mP = Math.max(0, mP - 1);
+        mA += 1;
+        total = Math.max(0, total - 1);
+        tP = Math.max(0, tP - 1);
+        tA += 1;
+      } else if (prevStatus === "absent" && newStatus === "present") {
+        mA = Math.max(0, mA - 1);
+        mP += 1;
+        total += 1;
+        tA = Math.max(0, tA - 1);
+        tP += 1;
+      }
+    }
+    await updateDoc(tRef, {
+      monthlyPresent: mP,
+      monthlyAbsent: mA,
+      monthlyAttendance: mP,
+      totalAttendance: total,
+      termPresent: tP,
+      termAbsent: tA,
+      lastTeacherAttendanceTermId: termId,
+    });
   }
 
   /* ---------- Add / Edit teacher ---------- */
@@ -377,7 +374,6 @@ export default function Teachers() {
       age: Number(form.age),
       className: activeClass,
       dateJoined: Timestamp.fromDate(new Date(form.dateJoined)),
-      // legacy fields; term counters initialize to 0
       monthlyPresent: 0,
       monthlyAbsent: 0,
       monthlyAttendance: 0,
@@ -402,7 +398,7 @@ export default function Teachers() {
     }
   };
 
-  // Delete flow
+  // Delete flow (also cleans per-day records)
   const requestDelete = (teacher) => setConfirmState({ open: true, teacher });
   const deleteTeacherAndAttendance = async (teacherId) => {
     try {
@@ -437,70 +433,16 @@ export default function Teachers() {
     }
   };
 
-  /* ---------- Marking logic (per-term + lifetime) ---------- */
-  async function applyCountersForStatusChange(tRef, prevStatus, newStatus) {
-    const tSnap = await getDoc(tRef);
-    if (!tSnap.exists()) return;
-
-    // ensure/reset term counters if term changed
-    const data = await ensureTeacherTermCounters(tRef, tSnap, termId);
-
-    // legacy fields
-    let mP = Number(data.monthlyPresent ?? data.monthlyAttendance ?? 0);
-    let mA = Number(data.monthlyAbsent ?? 0);
-    let total = Number(data.totalAttendance ?? 0);
-
-    // per-term fields
-    let tP = Number(data.termPresent ?? 0);
-    let tA = Number(data.termAbsent ?? 0);
-
-    if (!prevStatus) {
-      if (newStatus === "present") {
-        mP += 1;
-        total += 1;
-        tP += 1;
-      } else if (newStatus === "absent") {
-        mA += 1;
-        tA += 1;
-      }
-    } else if (prevStatus !== newStatus) {
-      if (prevStatus === "absent" && newStatus === "present") {
-        mA = Math.max(0, mA - 1);
-        mP += 1;
-        total += 1;
-
-        tA = Math.max(0, tA - 1);
-        tP += 1;
-      } else if (prevStatus === "present" && newStatus === "absent") {
-        mP = Math.max(0, mP - 1);
-        mA += 1;
-        total = Math.max(0, total - 1);
-
-        tP = Math.max(0, tP - 1);
-        tA += 1;
-      }
-    }
-
-    await updateDoc(tRef, {
-      monthlyPresent: mP,
-      monthlyAbsent: mA,
-      monthlyAttendance: mP,
-      totalAttendance: total,
-      termPresent: tP,
-      termAbsent: tA,
-      lastTeacherAttendanceTermId: termId,
-    });
-  }
-
+  /* ---------- Marking logic (ALLOW corrections same day) ---------- */
   const markAttendance = async (teacher, status) => {
     try {
-      const key = todayKeyOf(viewDate);
+      const key = dayKeyOf(viewDate);
       const ref = doc(db, "teacherDailyAttendance", key);
       const snap = await getDoc(ref);
       const normalized = status.toLowerCase();
 
       const existing = snap.exists() ? snap.data().records || {} : {};
-      const current = existing[teacher.id];
+      const prev = existing[teacher.id]?.status || null;
 
       const newRecords = {
         ...existing,
@@ -518,7 +460,7 @@ export default function Teachers() {
       const dateField =
         snap.exists() && snap.data().date instanceof Timestamp
           ? snap.data().date
-          : Timestamp.fromDate(parseKeyToDate(key) || new Date());
+          : normalizedDayTimestamp(parseKeyToDate(key) || new Date());
 
       await setDoc(
         ref,
@@ -526,12 +468,14 @@ export default function Teachers() {
         { merge: true }
       );
 
-      if (!current || current.status !== normalized) {
-        const tRef = doc(db, "teachers", teacher.id);
-        await applyCountersForStatusChange(tRef, current?.status, normalized);
-      }
+      await applyCountersForStatusChange(
+        doc(db, "teachers", teacher.id),
+        prev,
+        normalized
+      );
+
       setToast({
-        message: `Marked ${teacher.name} as ${status}`,
+        message: `Marked ${teacher.name} as ${normalized}`,
         type: "success",
       });
     } catch (err) {
@@ -544,35 +488,30 @@ export default function Teachers() {
       const teachersToUpdate = section.classes.flatMap(
         (c) => teachersByClass[c] || []
       );
-
-      // 🚫 No-op if there are no teachers at all in this section
       if (teachersToUpdate.length === 0) {
         setToast({ message: "No teachers in this section yet.", type: "warn" });
         return;
       }
 
-      const key = todayKeyOf(viewDate);
+      const key = dayKeyOf(viewDate);
       const ref = doc(db, "teacherDailyAttendance", key);
       const snap = await getDoc(ref);
       const existing = snap.exists() ? snap.data().records || {} : {};
       const records = { ...existing };
+      const normalized = status.toLowerCase();
 
       const updates = [];
       for (const t of teachersToUpdate) {
-        const prev = records[t.id];
-        const normalized = status.toLowerCase();
-        if (prev?.status === normalized) continue;
-
+        const prev = records[t.id]?.status || null;
+        if (prev === normalized) continue;
         records[t.id] = {
           status: normalized,
           timestamp: Timestamp.now(),
           className: t.className,
           teacherName: t.name,
         };
-
-        const tRef = doc(db, "teachers", t.id);
         updates.push(
-          applyCountersForStatusChange(tRef, prev?.status, normalized)
+          applyCountersForStatusChange(doc(db, "teachers", t.id), prev, normalized)
         );
       }
 
@@ -582,7 +521,7 @@ export default function Teachers() {
       const dateField =
         snap.exists() && snap.data().date instanceof Timestamp
           ? snap.data().date
-          : Timestamp.fromDate(parseKeyToDate(key) || new Date());
+          : normalizedDayTimestamp(parseKeyToDate(key) || new Date());
 
       await setDoc(
         ref,
@@ -590,8 +529,9 @@ export default function Teachers() {
         { merge: true }
       );
       await Promise.all(updates);
+
       setToast({
-        message: `Marked ${section.section} ${status}`,
+        message: `Marked ${section.section} ${normalized}`,
         type: "success",
       });
     } catch (err) {
@@ -606,7 +546,7 @@ export default function Teachers() {
     setViewDate(n);
   };
 
-  /* ---------- Calculation modal helpers (unchanged core) ---------- */
+  /* ---------- Calculation modal helpers ---------- */
   async function runCalculation() {
     setCalcError("");
     setCalcRows([]);
@@ -620,10 +560,7 @@ export default function Teachers() {
       setCalcError("End date cannot be before start date.");
       return;
     }
-    if (holidayDays < 0) {
-      setCalcError("Holiday days cannot be negative.");
-      return;
-    }
+    if (holidayDays < 0) setCalcError("Holiday days cannot be negative.");
 
     setCalcLoading(true);
     try {
@@ -646,7 +583,7 @@ export default function Teachers() {
       const totalDays = inRangeDocs.length;
       const adjustedDays = Math.max(0, totalDays - Number(holidayDays || 0));
 
-      const presentMap = new Map(); // id -> count
+      const presentMap = new Map();
       inRangeDocs.forEach(({ data }) => {
         const recs = data?.records || {};
         Object.entries(recs).forEach(([tid, rec]) => {
@@ -795,7 +732,7 @@ export default function Teachers() {
                     </button>
                     <button
                       onClick={() => shiftDay(1)}
-                      disabled={todayKeyOf(viewDate) === todayKeyOf(new Date())}
+                      disabled={dayKeyOf(viewDate) === dayKeyOf(new Date())}
                       className="w-full sm:w-auto px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white disabled:opacity-40 whitespace-nowrap h-10"
                     >
                       Next
@@ -837,8 +774,7 @@ export default function Teachers() {
                   <div className="flex items-center gap-3">
                     <span>{section.section}</span>
                     <span className="text-sm bg-[#6C4AB6] text-white px-2 py-1 rounded-full">
-                      {teacherCount}{" "}
-                      {teacherCount === 1 ? "teacher" : "teachers"}
+                      {teacherCount} {teacherCount === 1 ? "teacher" : "teachers"}
                     </span>
                   </div>
                   <FaChevronDown
@@ -856,44 +792,36 @@ export default function Teachers() {
                 >
                   <button
                     onClick={() => markAllInSection(section, "present")}
-                    disabled={
-                      !canTeachers || viewingHistorical || teacherCount === 0
-                    }
-                    title={
-                      teacherCount === 0 ? "No teachers in this section" : ""
-                    }
+                    disabled={!canTeachers || viewingHistorical || teacherCount === 0}
+                    title={teacherCount === 0 ? "No teachers in this section" : ""}
                     className={`px-3 py-2 rounded-lg text-white flex items-center gap-2
-      bg-green-600/50 hover:bg-green-600/70
-      ${
-        !canTeachers || viewingHistorical || teacherCount === 0
-          ? "opacity-50 cursor-not-allowed hover:bg-green-600/50"
-          : ""
-      }`}
+                      bg-green-600/50 hover:bg-green-600/70
+                      ${
+                        !canTeachers || viewingHistorical || teacherCount === 0
+                          ? "opacity-50 cursor-not-allowed hover:bg-green-600/50"
+                          : ""
+                      }`}
                   >
                     <FaCheck /> Mark Section Present
                   </button>
 
                   <button
                     onClick={() => markAllInSection(section, "absent")}
-                    disabled={
-                      !canTeachers || viewingHistorical || teacherCount === 0
-                    }
-                    title={
-                      teacherCount === 0 ? "No teachers in this section" : ""
-                    }
+                    disabled={!canTeachers || viewingHistorical || teacherCount === 0}
+                    title={teacherCount === 0 ? "No teachers in this section" : ""}
                     className={`px-3 py-2 rounded-lg text-white flex items-center gap-2
-      bg-red-600/50 hover:bg-red-600/70
-      ${
-        !canTeachers || viewingHistorical || teacherCount === 0
-          ? "opacity-50 cursor-not-allowed hover:bg-red-600/50"
-          : ""
-      }`}
+                      bg-red-600/50 hover:bg-red-600/70
+                      ${
+                        !canTeachers || viewingHistorical || teacherCount === 0
+                          ? "opacity-50 cursor-not-allowed hover:bg-red-600/50"
+                          : ""
+                      }`}
                   >
                     <FaTimes /> Mark Section Absent
                   </button>
                 </div>
 
-                {/* >>> Framer Motion content with height:auto (no clipping) <<< */}
+                {/* Content */}
                 <motion.div
                   initial={false}
                   animate={{
@@ -959,9 +887,7 @@ export default function Teachers() {
               <form onSubmit={handleSubmit} className="flex flex-col gap-3">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs text-white mb-1">
-                      Class
-                    </label>
+                    <label className="block text-xs text-white mb-1">Class</label>
                     <input
                       type="text"
                       value={activeClass}
@@ -987,9 +913,7 @@ export default function Teachers() {
                 </div>
 
                 <div>
-                  <label className="block text-xs text-white mb-1">
-                    Full Name
-                  </label>
+                  <label className="block text-xs text-white mb-1">Full Name</label>
                   <input
                     type="text"
                     placeholder="Full Name"
@@ -1041,7 +965,7 @@ export default function Teachers() {
           </motion.div>
         )}
 
-        {/* Calculation Modal (kept) */}
+        {/* Calculation Modal */}
         {showCalc && (
           <motion.div
             initial={{ opacity: 0 }}
@@ -1082,9 +1006,7 @@ export default function Teachers() {
                   />
                 </div>
                 <div className="sm:col-span-1">
-                  <label className="block text-xs text-white mb-1">
-                    End date
-                  </label>
+                  <label className="block text-xs text-white mb-1">End date</label>
                   <input
                     type="date"
                     value={calcEnd}
@@ -1172,7 +1094,7 @@ export default function Teachers() {
         title="Delete Teacher"
         message={
           confirmState.teacher
-            ? `Are you sure you want to delete ${confirmState.teacher.name}? This will also clean today's attendance records referencing them.`
+            ? `Are you sure you want to delete ${confirmState.teacher.name}? This will also clean attendance records referencing them.`
             : ""
         }
         onCancel={() => setConfirmState({ open: false, teacher: null })}
@@ -1245,7 +1167,6 @@ function TeacherClassBlock({
             {teachers.map((t) => {
               const rec = attendanceRecords[t.id];
 
-              // show per-term counts only for the active term
               const inThisTerm =
                 t?.lastTeacherAttendanceTermId &&
                 termId &&
@@ -1257,7 +1178,6 @@ function TeacherClassBlock({
                 <tr key={t.id} className="even:bg-white/10">
                   <td className="px-3 py-2 text-white">{t.name}</td>
 
-                  {/* Status pill */}
                   <td className="px-3 py-2">
                     <span
                       className={`inline-block px-2 py-1 rounded-full text-xs font-bold ${
@@ -1272,16 +1192,13 @@ function TeacherClassBlock({
                     </span>
                   </td>
 
-                  {/* Time */}
                   <td className="px-3 py-2 text-white">
                     {rec?.timestamp ? formatTime(rec.timestamp) : "-"}
                   </td>
 
-                  {/* Per-term counts */}
                   <td className="px-3 py-2 text-white">{termPresent}</td>
                   <td className="px-3 py-2 text-white">{termAbsent}</td>
 
-                  {/* Actions */}
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-2">
                       <button
