@@ -128,9 +128,7 @@ function StudentDropdown({ value, onChange, options, disabled = false }) {
     <Listbox value={value} onChange={onChange} disabled={disabled}>
       <div className="relative">
         <Listbox.Button
-          className={`w-full bg-gradient-to-tr from-white/10 via-[#3e1c7c]/20 to-[#372772]/20 border border-[#e7e2f8] rounded-lg px-4 py-2 text-white font-medium flex justify-between items-center focus:outline-none ${
-            disabled ? "opacity-50 cursor-not-allowed" : ""
-          }`}
+          className={`w-full bg-gradient-to-tr from-white/10 via-[#3e1c7c]/20 to-[#372772]/20 border border-[#e7e2f8] rounded-lg px-4 py-2 text-white font-medium flex justify-between items-center focus:outline-none ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
           aria-label="Select student"
         >
           {selected ? `${selected.studentId} - ${selected.name}` : "Select Student"}
@@ -149,9 +147,7 @@ function StudentDropdown({ value, onChange, options, disabled = false }) {
                 key={option.studentId}
                 value={option.studentId}
                 className={({ active }) =>
-                  `cursor-pointer select-none px-6 py-3 text-base font-bold text-white drop-shadow ${
-                    active ? "bg-[#8055f7]/40" : ""
-                  }`
+                  `cursor-pointer select-none px-6 py-3 text-base font-bold text-white drop-shadow ${active ? "bg-[#8055f7]/40" : ""}`
                 }
               >
                 {option.studentId} - {option.name} ({option.gender === "M" ? "Male" : "Female"}, Age: {option.age})
@@ -255,6 +251,196 @@ export default function FeesPage() {
     setActiveClass(className);
     setForm({ studentId: "", amountPaid: "" });
   };
+
+  // ==================== PRINT/EXPORT HELPERS (NEW) ====================
+  const buildClassRows = (className) => {
+    const feeAmount = getFeeAmount(className);
+    const students = (studentsByClass[className] || []).slice()
+      .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    const validIds = new Set(students.map(s => s.studentId));
+    const payments = (fees[className] || []).filter(p => validIds.has(p.studentId));
+
+    const byStudent = new Map();
+    students.forEach(s => byStudent.set(s.studentId, { student: s, payments: [] }));
+    payments.forEach(p => {
+      const entry = byStudent.get(p.studentId);
+      if (entry) entry.payments.push(p);
+    });
+
+    const rows = [];
+    for (const { student, payments } of byStudent.values()) {
+      payments.sort((a,b) => (a.date?.toMillis?.() ?? 0) - (b.date?.toMillis?.() ?? 0));
+      const totalPaid = payments.reduce((acc, p) => acc + Number(p.amount || 0), 0);
+      const remaining = Math.max(feeAmount - totalPaid, 0);
+      const status = statusFromTotals(totalPaid, feeAmount);
+      const last = payments[payments.length - 1];
+      rows.push({
+        id: student.studentId,
+        name: student.name || "",
+        totalPaid,
+        remaining,
+        status,
+        lastDate: last?.date ?? null,
+      });
+    }
+
+    return { feeAmount, rows };
+  };
+
+  const formatDT = (ts) => {
+    if (!ts) return "—";
+    return `${formatDate(ts)} ${formatTime(ts)}`;
+  };
+
+  const escapeHtml = (s = "") =>
+    String(s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+
+  const wrapPrintHTML = (title, tableHTML, footerHTML = "") => `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>${escapeHtml(title)}</title>
+  <style>
+    :root { --ink:#111; --muted:#666; --line:#ddd; --bg:#fff; }
+    * { box-sizing: border-box; }
+    body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji","Segoe UI Emoji"; margin: 20px; color: var(--ink); background: var(--bg); }
+    h1 { font-size: 20px; margin: 0 0 10px; }
+    .sub { color: var(--muted); font-size: 12px; margin-bottom: 16px; }
+    table { width: 100%; border-collapse: collapse; }
+    thead th { text-align: left; border-bottom: 2px solid var(--ink); padding: 8px 6px; font-size: 12px; }
+    tbody td { border-bottom: 1px solid var(--line); padding: 8px 6px; font-size: 12px; }
+    tfoot td { padding: 8px 6px; font-size: 12px; }
+    .right { text-align: right; }
+    .status-paid { color: #0a7a29; font-weight: 600; }
+    .status-owing { color: #b08900; font-weight: 600; }
+    .status-not { color: #b00020; font-weight: 600; }
+    .muted { color: var(--muted); }
+    .totals { margin-top: 10px; font-size: 12px; }
+    @media print {
+      @page { size: A4 portrait; margin: 12mm; }
+      .noprint { display: none !important; }
+    }
+    .toolbar { margin: 8px 0 16px; }
+    .toolbar button { padding: 6px 10px; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="toolbar noprint">
+    <button onclick="window.print()">Print / Save as PDF</button>
+  </div>
+  ${tableHTML}
+  ${footerHTML}
+  <script>window.addEventListener('load', () => { try { window.print(); } catch(_) {} });</script>
+</body>
+</html>`;
+
+  const generateBroadsheetHTML = (className) => {
+    const now = new Date();
+    const { feeAmount, rows } = buildClassRows(className);
+
+    let paidCount = 0, debtorsCount = 0, outstanding = 0;
+    rows.forEach(r => {
+      if (r.status === "Paid") paidCount++;
+      else { debtorsCount++; outstanding += r.remaining; }
+    });
+
+    const header = `
+      <h1>Class Broadsheet — ${escapeHtml(className)}</h1>
+      <div class="sub">Fee: ${escapeHtml(fmtNaira(feeAmount))} • Generated: ${now.toLocaleString()}</div>
+    `;
+
+    const body = `
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Student ID</th>
+            <th>Name</th>
+            <th class="right">Total Paid</th>
+            <th class="right">Remaining</th>
+            <th>Status</th>
+            <th>Last Payment</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map((r, i) => `
+            <tr>
+              <td>${i + 1}</td>
+              <td>${escapeHtml(r.id)}</td>
+              <td>${escapeHtml(r.name)}</td>
+              <td class="right">${escapeHtml(fmtNaira(r.totalPaid))}</td>
+              <td class="right">${escapeHtml(fmtNaira(r.remaining))}</td>
+              <td class="${
+                r.status === "Paid" ? "status-paid" :
+                r.status === "Owing" ? "status-owing" :
+                r.status === "Not Paid" ? "status-not" : "muted"
+              }">${escapeHtml(r.status)}</td>
+              <td>${escapeHtml(formatDT(r.lastDate))}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    `;
+
+    const footer = `
+      <div class="totals">
+        Total students: ${rows.length} • Paid: ${paidCount} • Debtors: ${debtorsCount} • Outstanding: <strong>${escapeHtml(fmtNaira(outstanding))}</strong>
+      </div>
+    `;
+
+    return wrapPrintHTML(`Broadsheet - ${className}`, header + body, footer);
+  };
+
+  const generateDebtorsHTML = (className) => {
+    const now = new Date();
+    const { feeAmount, rows } = buildClassRows(className);
+    const debtors = rows.filter(r => r.remaining > 0);
+
+    const header = `
+      <h1>Debtors — ${escapeHtml(className)}</h1>
+      <div class="sub">Fee: ${escapeHtml(fmtNaira(feeAmount))} • Generated: ${now.toLocaleString()}</div>
+    `;
+
+    const body = `
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Student ID</th>
+            <th>Name</th>
+            <th class="right">Total Paid</th>
+            <th class="right">Remaining</th>
+            <th>Status</th>
+            <th>Last Payment</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${debtors.map((r, i) => `
+            <tr>
+              <td>${i + 1}</td>
+              <td>${escapeHtml(r.id)}</td>
+              <td>${escapeHtml(r.name)}</td>
+              <td class="right">${escapeHtml(fmtNaira(r.totalPaid))}</td>
+              <td class="right"><strong>${escapeHtml(fmtNaira(r.remaining))}</strong></td>
+              <td class="${
+                r.status === "Paid" ? "status-paid" :
+                r.status === "Owing" ? "status-owing" :
+                r.status === "Not Paid" ? "status-not" : "muted"
+              }">${escapeHtml(r.status)}</td>
+              <td>${escapeHtml(formatDT(r.lastDate))}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+      ${debtors.length === 0 ? '<p class="muted">No debtors 🎉</p>' : ''}
+    `;
+
+    return wrapPrintHTML(`Debtors - ${className}`, header + body);
+  };
+  // ================== END PRINT/EXPORT HELPERS (NEW) ==================
 
   // ADD payment with overpay guard
   const handleSubmit = async (e) => {
@@ -431,9 +617,7 @@ function SectionBlock({ section, openSection, setOpenSection, fees, studentsByCl
       className="rounded-2xl bg-gradient-to-tr from-white/10 via-[#3e1c7c]/20 to-[#372772]/20 backdrop-blur-2xl shadow-2xl border border-white/30 p-4 sm:p-6"
     >
       <button
-        className={`flex items-center w-full justify-between px-4 py-3 rounded-xl text-xl sm:text-2xl font-bold text-white mb-2 transition focus:outline-none hover:bg-white/10 ${
-          openSection === section.section ? "bg-white/10" : ""
-        }`}
+        className={`flex items-center w-full justify-between px-4 py-3 rounded-xl text-xl sm:text-2xl font-bold text-white mb-2 transition focus:outline-none hover:bg-white/10 ${openSection === section.section ? "bg-white/10" : ""}`}
         onClick={() => setOpenSection(openSection === section.section ? "" : section.section)}
         aria-expanded={openSection === section.section}
         aria-controls={`panel-${section.section}`}
@@ -604,9 +788,7 @@ function FeeSectionTable({ className, fees, students, onAdd, onDelete, deletingI
   const Pill = ({ active, children, onClick }) => (
     <button
       onClick={onClick}
-      className={`text-xs sm:text-sm px-3 py-1.5 rounded-full border transition shrink-0 ${
-        active ? "bg-[#6C4AB6] text-white border-transparent" : "bg-white/10 text-white border-white/20 hover:bg-white/20"
-      }`}
+      className={`text-xs sm:text-sm px-3 py-1.5 rounded-full border transition shrink-0 ${active ? "bg-[#6C4AB6] text-white border-transparent" : "bg-white/10 text-white border-white/20 hover:bg-white/20"}`}
     >
       {children}
     </button>

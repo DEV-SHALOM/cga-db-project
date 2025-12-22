@@ -5,6 +5,7 @@ import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Teachers from "./pages/Teachers";
 import Students from "./pages/Students";
+import Results from "./pages/Results";
 import Attendance from "./pages/Attendance";
 import DocumentStorage from "./pages/DocumentStorage";
 import Fees from "./pages/Fees";
@@ -122,6 +123,18 @@ export default function App() {
                   element={
                     <RequireSection section="expenses">
                       <Expenses />
+                    </RequireSection>
+                  }
+                />
+              }
+            />
+            <Route
+              path="/results"
+              element={
+                <PrivateRoute
+                  element={
+                    <RequireSection section="results">
+                      <Results />
                     </RequireSection>
                   }
                 />
