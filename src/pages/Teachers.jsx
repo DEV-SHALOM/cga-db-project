@@ -8,8 +8,12 @@ import {
   FaCheck,
   FaTimes,
   FaCalendarAlt,
+  FaUsers,
+  FaUserCheck,
+  FaUserTimes,
+  FaChartLine,
 } from "react-icons/fa";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   collection,
   addDoc,
@@ -30,7 +34,7 @@ import { db } from "../firebase";
 import { usePermission } from "../hooks/usePermission";
 import { useActiveTerm } from "../hooks/useActiveTerm";
 
-/* ---------- Class structure (Nursery & Basic now A/B arms) ---------- */
+/* ---------- Class structure ---------- */
 const makeAB = (prefix, count) =>
   Array.from({ length: count }, (_, i) => {
     const n = i + 1;
@@ -87,12 +91,17 @@ function formatTime(ts) {
 /* ---------- UI helpers ---------- */
 function Banner({ children, tone = "info" }) {
   const colors = {
-    info: "bg-blue-500/20 border-blue-400 text-blue-200",
-    warn: "bg-yellow-500/20 border-yellow-400 text-yellow-200",
-    error: "bg-red-500/20 border-red-400 text-red-200",
+    info: "bg-gradient-to-r from-blue-600 to-blue-700 border border-blue-500/50 text-white",
+    warn: "bg-gradient-to-r from-yellow-600 to-yellow-700 border border-yellow-500/50 text-white",
+    error:
+      "bg-gradient-to-r from-red-600 to-red-700 border border-red-500/50 text-white",
   }[tone];
   return (
-    <div className={`rounded-xl border px-4 py-2 ${colors}`}>{children}</div>
+    <div
+      className={`rounded-xl px-4 py-3 ${colors} backdrop-blur-md shadow-lg`}
+    >
+      {children}
+    </div>
   );
 }
 
@@ -100,55 +109,68 @@ function Toast({ message, type, onClose }) {
   if (!message) return null;
   const bg =
     type === "error"
-      ? "bg-red-500"
+      ? "from-red-600 to-red-700 border-red-500/50"
       : type === "warn"
-      ? "bg-yellow-600"
-      : "bg-green-600";
+      ? "from-yellow-600 to-yellow-700 border-yellow-500/50"
+      : "from-green-600 to-green-700 border-green-500/50";
   return (
-    <div
-      className={`fixed bottom-4 right-4 z-[100] px-4 py-3 rounded-lg text-white shadow-lg ${bg}`}
+    <motion.div
+      initial={{ y: 20, opacity: 0 }}
+      animate={{ y: 0, opacity: 1 }}
+      exit={{ y: 20, opacity: 0 }}
+      className={`fixed bottom-6 right-6 z-[100] px-6 py-4 rounded-xl text-white shadow-2xl bg-gradient-to-r ${bg} border backdrop-blur-md`}
     >
       <div className="flex items-center justify-between gap-4">
-        <span className="text-sm">{message}</span>
+        <span className="font-medium">{message}</span>
         <button onClick={onClose} className="text-white/80 hover:text-white">
           ✕
         </button>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
-function ConfirmModal({ open, title = "Confirm", message, onCancel, onConfirm }) {
+function ConfirmModal({
+  open,
+  title = "Confirm",
+  message,
+  onCancel,
+  onConfirm,
+}) {
   if (!open) return null;
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
-    >
-      <motion.div
-        initial={{ scale: 0.95, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        className="w-full max-w-md bg-gradient-to-tr from-white/10 via-[#3e1c7c]/20 to-[#372772]/20 backdrop-blur-2xl p-6 rounded-2xl shadow-2xl border border-white/30"
-      >
-        <h3 className="text-white font-bold text-xl mb-2">{title}</h3>
-        <p className="text-white/90 text-sm">{message}</p>
-        <div className="flex justify-end gap-2 mt-5">
-          <button
-            onClick={onCancel}
-            className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={onConfirm}
-            className="px-4 py-2 rounded-lg bg-red-500 hover:bg-red-600 text-white"
-          >
-            Delete
-          </button>
-        </div>
-      </motion.div>
-    </motion.div>
+    <AnimatePresence>
+      <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <motion.div
+          initial={{ scale: 0.9, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          exit={{ scale: 0.9, opacity: 0 }}
+          className="w-full max-w-md bg-gradient-to-br from-[#1a1038] via-[#241a44] to-[#1b1740] p-6 rounded-2xl shadow-2xl border border-red-500/30"
+        >
+          <div className="flex items-center gap-3 mb-3">
+            <div className="p-2 bg-red-500/20 rounded-lg">
+              <FaTrash className="text-red-400" />
+            </div>
+            <h3 className="text-white font-bold text-xl">{title}</h3>
+          </div>
+          <p className="text-white/90 text-sm mb-5">{message}</p>
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={onCancel}
+              className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-all"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={onConfirm}
+              className="px-4 py-2 rounded-lg bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white transition-all"
+            >
+              Delete
+            </button>
+          </div>
+        </motion.div>
+      </div>
+    </AnimatePresence>
   );
 }
 
@@ -171,7 +193,7 @@ export default function Teachers() {
   const [viewDate, setViewDate] = useState(new Date());
   const [viewingHistorical, setViewingHistorical] = useState(false);
 
-  // Auto-rollover to the new day without a page refresh
+  // Auto-rollover to the new day
   useEffect(() => {
     const now = new Date();
     const midnight = new Date(
@@ -219,7 +241,25 @@ export default function Teachers() {
     return map;
   }, [teachersByClass]);
 
-  // Subscribe teachers per class (global)
+  // Calculate global stats
+  const globalStats = useMemo(() => {
+    const totalTeachers = Object.values(teachersByClass).reduce(
+      (sum, list) => sum + (list?.length || 0),
+      0
+    );
+    const absentToday = Object.values(attendanceRecords).filter(
+      (r) => r.status === "absent"
+    ).length;
+
+    return {
+      totalTeachers,
+      presentToday,
+      absentToday,
+      unmarked: totalTeachers - presentToday - absentToday,
+    };
+  }, [teachersByClass, presentToday, attendanceRecords]);
+
+  // Subscribe teachers per class
   useEffect(() => {
     if (perm.loading || !user) return;
     if (!canTeachers) {
@@ -248,7 +288,7 @@ export default function Teachers() {
     return () => unsubs.forEach((u) => u && u());
   }, [perm.loading, canTeachers, user]);
 
-  // Ensure today's doc exists (do NOT wipe existing records)
+  // Ensure today's doc exists
   useEffect(() => {
     if (perm.loading || !user || !canTeachers || !termId) return;
     const key = dayKeyOf(new Date());
@@ -306,7 +346,7 @@ export default function Teachers() {
     return () => unsub();
   }, [viewDate, perm.loading, canTeachers, user]);
 
-  /* ---------- Counter helper: handle transitions correctly ---------- */
+  /* ---------- Counter helper ---------- */
   async function applyCountersForStatusChange(tRef, prevStatus, newStatus) {
     const s = await getDoc(tRef);
     if (!s.exists()) return;
@@ -398,7 +438,7 @@ export default function Teachers() {
     }
   };
 
-  // Delete flow (also cleans per-day records)
+  // Delete flow
   const requestDelete = (teacher) => setConfirmState({ open: true, teacher });
   const deleteTeacherAndAttendance = async (teacherId) => {
     try {
@@ -433,7 +473,7 @@ export default function Teachers() {
     }
   };
 
-  /* ---------- Marking logic (ALLOW corrections same day) ---------- */
+  /* ---------- Marking logic ---------- */
   const markAttendance = async (teacher, status) => {
     try {
       const key = dayKeyOf(viewDate);
@@ -511,7 +551,11 @@ export default function Teachers() {
           teacherName: t.name,
         };
         updates.push(
-          applyCountersForStatusChange(doc(db, "teachers", t.id), prev, normalized)
+          applyCountersForStatusChange(
+            doc(db, "teachers", t.id),
+            prev,
+            normalized
+          )
         );
       }
 
@@ -546,7 +590,7 @@ export default function Teachers() {
     setViewDate(n);
   };
 
-  /* ---------- Calculation modal helpers ---------- */
+  /* ---------- Calculation modal ---------- */
   async function runCalculation() {
     setCalcError("");
     setCalcRows([]);
@@ -646,49 +690,134 @@ export default function Teachers() {
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      transition={{ duration: 0.3 }}
-      className="min-h-screen w-full py-6 px-2 sm:px-8 pb-24"
+      transition={{ duration: 0.5 }}
+      className="min-h-screen py-4 md:py-8 px-3 md:px-6 lg:px-8"
     >
       <div className="max-w-7xl mx-auto font-[Poppins]">
-        <motion.h2
+        {/* Header */}
+        <motion.div
           initial={{ y: -20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
-          transition={{ delay: 0.1, duration: 0.3 }}
-          className="font-extrabold text-4xl sm:text-5xl text-white mb-6 text-center drop-shadow-lg"
+          transition={{ duration: 0.5 }}
+          className="mb-6 md:mb-8"
         >
-          Teacher Management
-        </motion.h2>
+          <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold text-white mb-4 drop-shadow-lg">
+            Teacher Management
+          </h1>
 
-        {!!pageError && (
-          <div className="mb-4">
-            <Banner tone="error">{pageError}</Banner>
-          </div>
-        )}
-        {!user && (
-          <div className="mb-4">
-            <Banner tone="warn">Please log in.</Banner>
-          </div>
-        )}
-        {user && !perm.loading && !canTeachers && (
-          <div className="mb-4">
-            <Banner tone="warn">
-              You don't have access to Teachers. Ask an admin to grant the
-              "teachers" section.
-            </Banner>
-          </div>
-        )}
-        {perm.loading && (
-          <div className="mb-4">
-            <Banner>Loading permissions...</Banner>
-          </div>
-        )}
+          {/* Error/Warning Banners */}
+          {!!pageError && (
+            <div className="mb-4">
+              <Banner tone="error">{pageError}</Banner>
+            </div>
+          )}
+          {!user && (
+            <div className="mb-4">
+              <Banner tone="warn">Please log in.</Banner>
+            </div>
+          )}
+          {user && !perm.loading && !canTeachers && (
+            <div className="mb-4">
+              <Banner tone="warn">
+                You don't have access to Teachers. Ask an admin to grant the
+                "teachers" section.
+              </Banner>
+            </div>
+          )}
+          {perm.loading && (
+            <div className="mb-4">
+              <Banner>Loading permissions...</Banner>
+            </div>
+          )}
 
-        {/* Header summary */}
-        <div className="mb-6 bg-white/10 border border-white/20 rounded-2xl p-4 backdrop-blur-md">
+          {/* Quick Stats Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ delay: 0.1 }}
+              className="bg-gradient-to-br from-blue-500/20 to-blue-600/20 border border-blue-400/30 rounded-xl px-4 py-4 backdrop-blur-md shadow-lg"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-blue-300/80 text-xs font-medium mb-1">
+                    Total Teachers
+                  </div>
+                  <div className="text-white text-2xl font-bold">
+                    {globalStats.totalTeachers}
+                  </div>
+                </div>
+                <FaUsers className="text-blue-400 text-3xl" />
+              </div>
+            </motion.div>
+
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ delay: 0.2 }}
+              className="bg-gradient-to-br from-green-500/20 to-green-600/20 border border-green-400/30 rounded-xl px-4 py-4 backdrop-blur-md shadow-lg"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-green-300/80 text-xs font-medium mb-1">
+                    Present Today
+                  </div>
+                  <div className="text-white text-2xl font-bold">
+                    {globalStats.presentToday}
+                  </div>
+                </div>
+                <FaUserCheck className="text-green-400 text-3xl" />
+              </div>
+            </motion.div>
+
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ delay: 0.3 }}
+              className="bg-gradient-to-br from-red-500/20 to-red-600/20 border border-red-400/30 rounded-xl px-4 py-4 backdrop-blur-md shadow-lg"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-red-300/80 text-xs font-medium mb-1">
+                    Absent Today
+                  </div>
+                  <div className="text-white text-2xl font-bold">
+                    {globalStats.absentToday}
+                  </div>
+                </div>
+                <FaUserTimes className="text-red-400 text-3xl" />
+              </div>
+            </motion.div>
+
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ delay: 0.4 }}
+              className="bg-gradient-to-br from-amber-500/20 to-amber-600/20 border border-amber-400/30 rounded-xl px-4 py-4 backdrop-blur-md shadow-lg"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-amber-300/80 text-xs font-medium mb-1">
+                    Unmarked
+                  </div>
+                  <div className="text-white text-2xl font-bold">
+                    {globalStats.unmarked}
+                  </div>
+                </div>
+                <FaChartLine className="text-amber-400 text-3xl" />
+              </div>
+            </motion.div>
+          </div>
+        </motion.div>
+
+        {/* Control Panel */}
+        <div className="mb-6 bg-gradient-to-br from-white/10 to-white/5 border border-white/20 rounded-2xl p-4 backdrop-blur-md shadow-xl">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
-              <FaCalendarAlt className="text-white/90 shrink-0" />
-              <div className="text-white font-medium">
+              <div className="p-2 bg-purple-500/20 rounded-lg">
+                <FaCalendarAlt className="text-purple-400" />
+              </div>
+              <div className="text-white font-semibold">
                 {viewDate.toLocaleDateString("en-GB", {
                   weekday: "long",
                   day: "numeric",
@@ -698,55 +827,51 @@ export default function Teachers() {
               </div>
             </div>
 
-            <div className="w-full sm:w-auto">
-              <div className="grid grid-cols-2 gap-2 w-full sm:flex sm:flex-wrap sm:items-center sm:justify-end">
-                <div className="col-span-2 sm:col-auto text-[#9be7c4] font-semibold text-center sm:text-right">
-                  Present: {presentToday}
-                </div>
-
-                {canTeachers && (
-                  <button
-                    onClick={() => setShowCalc(true)}
-                    className="w-full sm:w-auto px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white text-center break-words min-h-[2.5rem]"
-                  >
-                    Calculate Attendance
-                  </button>
-                )}
-
+            <div className="flex flex-wrap gap-2">
+              {canTeachers && (
                 <button
-                  onClick={toggleHistory}
-                  className={`w-full sm:w-auto px-3 py-2 rounded-lg ${
-                    viewingHistorical ? "bg-purple-600/50" : "bg-white/10"
-                  } hover:bg-white/20 text-white whitespace-nowrap h-10`}
+                  onClick={() => setShowCalc(true)}
+                  className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white font-medium transition-all border border-white/20"
                 >
-                  {viewingHistorical ? "Current Day" : "View History"}
+                  Calculate Attendance
                 </button>
+              )}
 
-                {viewingHistorical && (
-                  <>
-                    <button
-                      onClick={() => shiftDay(-1)}
-                      className="w-full sm:w-auto px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white whitespace-nowrap h-10"
-                    >
-                      Prev
-                    </button>
-                    <button
-                      onClick={() => shiftDay(1)}
-                      disabled={dayKeyOf(viewDate) === dayKeyOf(new Date())}
-                      className="w-full sm:w-auto px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white disabled:opacity-40 whitespace-nowrap h-10"
-                    >
-                      Next
-                    </button>
-                  </>
-                )}
-              </div>
+              <button
+                onClick={toggleHistory}
+                className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                  viewingHistorical
+                    ? "bg-gradient-to-r from-purple-600 to-purple-700 text-white border border-purple-500/50"
+                    : "bg-white/10 hover:bg-white/20 text-white border border-white/20"
+                }`}
+              >
+                {viewingHistorical ? "Current Day" : "View History"}
+              </button>
+
+              {viewingHistorical && (
+                <>
+                  <button
+                    onClick={() => shiftDay(-1)}
+                    className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white font-medium transition-all border border-white/20"
+                  >
+                    Prev
+                  </button>
+                  <button
+                    onClick={() => shiftDay(1)}
+                    disabled={dayKeyOf(viewDate) === dayKeyOf(new Date())}
+                    className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white font-medium transition-all border border-white/20 disabled:opacity-40"
+                  >
+                    Next
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
 
         {/* Sections */}
-        <div className="space-y-8">
-          {classStructure.map((section) => {
+        <div className="space-y-6">
+          {classStructure.map((section, idx) => {
             const teacherCount = section.classes.reduce(
               (n, c) => n + (teachersByClass[c]?.length || 0),
               0
@@ -756,15 +881,15 @@ export default function Teachers() {
                 key={section.section}
                 initial={{ y: 20, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
-                transition={{ duration: 0.3 }}
-                className="rounded-2xl bg-gradient-to-tr from-white/10 via-[#3e1c7c]/20 to-[#372772]/20 backdrop-blur-2xl shadow-2xl border border-white/30 p-6"
+                transition={{ duration: 0.3, delay: idx * 0.05 }}
+                className="rounded-2xl bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-md shadow-xl border border-white/20 p-5 md:p-6"
               >
                 <button
-                  className={`flex items-center w-full justify-between px-4 py-3 rounded-xl text-2xl font-bold text-white ${
+                  className={`flex items-center w-full justify-between px-5 py-4 rounded-xl text-xl md:text-2xl font-bold text-white transition-all ${
                     openSection === section.section
-                      ? "bg-[#1e007273] backdrop-blur-lg shadow-xl"
-                      : ""
-                  } hover:bg-white/20 transition mb-2`}
+                      ? "bg-gradient-to-r from-purple-600/30 to-purple-700/30 border border-purple-400/30 shadow-lg"
+                      : "bg-white/5 border border-white/20 hover:bg-white/10"
+                  }`}
                   onClick={() =>
                     setOpenSection(
                       openSection === section.section ? "" : section.section
@@ -772,9 +897,10 @@ export default function Teachers() {
                   }
                 >
                   <div className="flex items-center gap-3">
+                    <FaUsers className="text-purple-400" />
                     <span>{section.section}</span>
-                    <span className="text-sm bg-[#6C4AB6] text-white px-2 py-1 rounded-full">
-                      {teacherCount} {teacherCount === 1 ? "teacher" : "teachers"}
+                    <span className="text-sm bg-gradient-to-r from-purple-600 to-purple-700 text-white px-2.5 py-1 rounded-full font-semibold">
+                      {teacherCount}
                     </span>
                   </div>
                   <FaChevronDown
@@ -784,309 +910,350 @@ export default function Teachers() {
                   />
                 </button>
 
-                {/* bulk mark */}
-                <div
-                  className={`${
-                    openSection === section.section ? "flex" : "hidden"
-                  } gap-3 mb-3`}
-                >
-                  <button
-                    onClick={() => markAllInSection(section, "present")}
-                    disabled={!canTeachers || viewingHistorical || teacherCount === 0}
-                    title={teacherCount === 0 ? "No teachers in this section" : ""}
-                    className={`px-3 py-2 rounded-lg text-white flex items-center gap-2
-                      bg-green-600/50 hover:bg-green-600/70
-                      ${
-                        !canTeachers || viewingHistorical || teacherCount === 0
-                          ? "opacity-50 cursor-not-allowed hover:bg-green-600/50"
-                          : ""
-                      }`}
-                  >
-                    <FaCheck /> Mark Section Present
-                  </button>
+                {/* Bulk mark buttons */}
+                <AnimatePresence>
+                  {openSection === section.section && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="flex gap-3 mt-4"
+                    >
+                      <button
+                        onClick={() => markAllInSection(section, "present")}
+                        disabled={
+                          !canTeachers ||
+                          viewingHistorical ||
+                          teacherCount === 0
+                        }
+                        className={`px-4 py-2 rounded-lg text-white flex items-center gap-2 font-medium transition-all ${
+                          !canTeachers ||
+                          viewingHistorical ||
+                          teacherCount === 0
+                            ? "bg-green-600/30 opacity-50 cursor-not-allowed"
+                            : "bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800"
+                        }`}
+                      >
+                        <FaCheck /> Mark Section Present
+                      </button>
 
-                  <button
-                    onClick={() => markAllInSection(section, "absent")}
-                    disabled={!canTeachers || viewingHistorical || teacherCount === 0}
-                    title={teacherCount === 0 ? "No teachers in this section" : ""}
-                    className={`px-3 py-2 rounded-lg text-white flex items-center gap-2
-                      bg-red-600/50 hover:bg-red-600/70
-                      ${
-                        !canTeachers || viewingHistorical || teacherCount === 0
-                          ? "opacity-50 cursor-not-allowed hover:bg-red-600/50"
-                          : ""
-                      }`}
-                  >
-                    <FaTimes /> Mark Section Absent
-                  </button>
-                </div>
+                      <button
+                        onClick={() => markAllInSection(section, "absent")}
+                        disabled={
+                          !canTeachers ||
+                          viewingHistorical ||
+                          teacherCount === 0
+                        }
+                        className={`px-4 py-2 rounded-lg text-white flex items-center gap-2 font-medium transition-all ${
+                          !canTeachers ||
+                          viewingHistorical ||
+                          teacherCount === 0
+                            ? "bg-red-600/30 opacity-50 cursor-not-allowed"
+                            : "bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800"
+                        }`}
+                      >
+                        <FaTimes /> Mark Section Absent
+                      </button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
 
                 {/* Content */}
-                <motion.div
-                  initial={false}
-                  animate={{
-                    height: openSection === section.section ? "auto" : 0,
-                    opacity: openSection === section.section ? 1 : 0,
-                  }}
-                  transition={{ duration: 0.35, ease: [0.2, 0, 0, 1] }}
-                  style={{ overflow: "hidden" }}
-                >
-                  <div className="flex flex-col gap-6 mt-3">
-                    {section.classes.map((className) => (
-                      <TeacherClassBlock
-                        key={className}
-                        className={className}
-                        teachers={teachersByClass[className] || []}
-                        attendanceRecords={attendanceRecords}
-                        onAdd={() => openAddModal(className)}
-                        onEdit={(t) => {
-                          setShowModal(true);
-                          setActiveClass(t.className);
-                          setEditId(t.id);
-                          setForm({
-                            name: t.name || "",
-                            age: t.age || "",
-                            dateJoined:
-                              t.dateJoined instanceof Timestamp
-                                ? t.dateJoined
-                                    .toDate()
-                                    .toISOString()
-                                    .substring(0, 10)
-                                : "",
-                          });
-                        }}
-                        onDelete={(t) => requestDelete(t)}
-                        onMark={markAttendance}
-                        viewingHistorical={viewingHistorical}
-                        canTeachers={canTeachers}
-                        termId={termId}
-                      />
-                    ))}
-                  </div>
-                </motion.div>
+                <AnimatePresence>
+                  {openSection === section.section && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.3 }}
+                      style={{ overflow: "hidden" }}
+                    >
+                      <div className="flex flex-col gap-5 mt-5">
+                        {section.classes.map((className) => (
+                          <TeacherClassBlock
+                            key={className}
+                            className={className}
+                            teachers={teachersByClass[className] || []}
+                            attendanceRecords={attendanceRecords}
+                            onAdd={() => openAddModal(className)}
+                            onEdit={(t) => {
+                              setShowModal(true);
+                              setActiveClass(t.className);
+                              setEditId(t.id);
+                              setForm({
+                                name: t.name || "",
+                                age: t.age || "",
+                                dateJoined:
+                                  t.dateJoined instanceof Timestamp
+                                    ? t.dateJoined
+                                        .toDate()
+                                        .toISOString()
+                                        .substring(0, 10)
+                                    : "",
+                              });
+                            }}
+                            onDelete={(t) => requestDelete(t)}
+                            onMark={markAttendance}
+                            viewingHistorical={viewingHistorical}
+                            canTeachers={canTeachers}
+                            termId={termId}
+                          />
+                        ))}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </motion.div>
             );
           })}
         </div>
 
         {/* Add/Edit Modal */}
-        {showModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4 overflow-y-auto"
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              className="w-full max-w-[95vw] sm:max-w-md bg-gradient-to-tr from-white/10 via-[#3e1c7c]/20 to-[#372772]/20 backdrop-blur-2xl p-6 rounded-2xl shadow-2xl border border-white/30"
-            >
-              <h3 className="font-bold text-xl mb-4 text-white">
-                {editId ? "Edit" : "Add"} Teacher
-              </h3>
-              <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs text-white mb-1">Class</label>
-                    <input
-                      type="text"
-                      value={activeClass}
-                      readOnly
-                      disabled
-                      className="border border-[#e7e2f8] rounded-lg px-3 py-2 bg-white/20 text-white w-full text-sm"
-                    />
+        <AnimatePresence>
+          {showModal && (
+            <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                className="w-full max-w-md bg-gradient-to-br from-[#1a1038] via-[#241a44] to-[#1b1740] p-6 rounded-2xl shadow-2xl border border-purple-500/30"
+              >
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="p-2 bg-purple-500/20 rounded-lg">
+                    {editId ? (
+                      <FaEdit className="text-purple-400" />
+                    ) : (
+                      <FaPlus className="text-purple-400" />
+                    )}
                   </div>
+                  <h3 className="font-bold text-xl text-white">
+                    {editId ? "Edit" : "Add"} Teacher
+                  </h3>
+                </div>
+                <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-semibold text-white/90 mb-2">
+                        Class
+                      </label>
+                      <input
+                        type="text"
+                        value={activeClass}
+                        readOnly
+                        disabled
+                        className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-white/90 mb-2">
+                        Date Joined
+                      </label>
+                      <input
+                        type="date"
+                        value={form.dateJoined}
+                        onChange={(e) =>
+                          setForm((f) => ({ ...f, dateJoined: e.target.value }))
+                        }
+                        className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50"
+                        required
+                      />
+                    </div>
+                  </div>
+
                   <div>
-                    <label className="block text-xs text-white mb-1">
-                      Date Joined
+                    <label className="block text-sm font-semibold text-white/90 mb-2">
+                      Full Name
                     </label>
                     <input
-                      type="date"
-                      value={form.dateJoined}
+                      type="text"
+                      placeholder="Full Name"
+                      value={form.name}
                       onChange={(e) =>
-                        setForm((f) => ({ ...f, dateJoined: e.target.value }))
+                        setForm((f) => ({ ...f, name: e.target.value }))
                       }
-                      className="border border-[#e7e2f8] rounded-lg px-3 py-2 bg-white/10 text-white w-full text-sm"
+                      className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-purple-500/50"
                       required
                     />
                   </div>
-                </div>
 
-                <div>
-                  <label className="block text-xs text-white mb-1">Full Name</label>
-                  <input
-                    type="text"
-                    placeholder="Full Name"
-                    value={form.name}
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, name: e.target.value }))
-                    }
-                    className="border border-[#e7e2f8] rounded-lg px-3 py-2 bg-white/10 text-white w-full text-sm"
-                    required
-                  />
-                </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-white/90 mb-2">
+                      Age
+                    </label>
+                    <input
+                      type="number"
+                      min={16}
+                      placeholder="Age"
+                      value={form.age}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, age: e.target.value }))
+                      }
+                      className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-purple-500/50"
+                      required
+                    />
+                  </div>
 
-                <div>
-                  <label className="block text-xs text-white mb-1">Age</label>
-                  <input
-                    type="number"
-                    min={16}
-                    placeholder="Age"
-                    value={form.age}
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, age: e.target.value }))
-                    }
-                    className="border border-[#e7e2f8] rounded-lg px-3 py-2 bg-white/10 text-white w-full text-sm"
-                    required
-                  />
-                </div>
-
-                <div className="flex gap-3 justify-end mt-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowModal(false);
-                      setEditId(null);
-                      setForm({ name: "", age: "", dateJoined: "" });
-                    }}
-                    className="px-4 py-1.5 bg-gray-100 text-red-500 rounded-lg hover:bg-gray-200 transition text-sm"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-5 py-1.5 bg-[#6C4AB6] text-white font-semibold rounded-lg hover:bg-[#8055f7] transition text-sm"
-                  >
-                    {editId ? "Update" : "Add"}
-                  </button>
-                </div>
-              </form>
-            </motion.div>
-          </motion.div>
-        )}
+                  <div className="flex gap-3 justify-end mt-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowModal(false);
+                        setEditId(null);
+                        setForm({ name: "", age: "", dateJoined: "" });
+                      }}
+                      className="px-5 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-all"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-6 py-2 bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white font-semibold rounded-lg transition-all"
+                    >
+                      {editId ? "Update" : "Add"}
+                    </button>
+                  </div>
+                </form>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
 
         {/* Calculation Modal */}
-        {showCalc && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4 overflow-y-auto"
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              className="w-full max-w-3xl bg-gradient-to-tr from-white/10 via-[#3e1c7c]/20 to-[#372772]/20 backdrop-blur-2xl p-6 rounded-2xl shadow-2xl border border-white/30"
-            >
-              <div className="flex items-start justify-between gap-4">
-                <h3 className="font-bold text-xl text-white">
-                  Calculate Attendance (Range)
-                </h3>
-                <button
-                  onClick={() => {
-                    setShowCalc(false);
-                    setCalcRows([]);
-                    setCalcError("");
-                  }}
-                  className="text-white/80 hover:text-white"
-                >
-                  ✕
-                </button>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 mt-4">
-                <div className="sm:col-span-1">
-                  <label className="block text-xs text-white mb-1">
-                    Start date
-                  </label>
-                  <input
-                    type="date"
-                    value={calcStart}
-                    onChange={(e) => setCalcStart(e.target.value)}
-                    className="border border-[#e7e2f8] rounded-lg px-3 py-2 bg-white/10 text-white w-full text-sm"
-                  />
-                </div>
-                <div className="sm:col-span-1">
-                  <label className="block text-xs text-white mb-1">End date</label>
-                  <input
-                    type="date"
-                    value={calcEnd}
-                    onChange={(e) => setCalcEnd(e.target.value)}
-                    className="border border-[#e7e2f8] rounded-lg px-3 py-2 bg-white/10 text-white w-full text-sm"
-                  />
-                </div>
-                <div className="sm:col-span-1">
-                  <label className="block text-xs text-white mb-1">
-                    Holiday/Break days
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={holidayDays}
-                    onChange={(e) =>
-                      setHolidayDays(parseInt(e.target.value || "0", 10))
-                    }
-                    className="border border-[#e7e2f8] rounded-lg px-3 py-2 bg-white/10 text-white w-full text-sm"
-                  />
-                </div>
-                <div className="sm:col-span-1 flex items-end">
+        <AnimatePresence>
+          {showCalc && (
+            <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                className="w-full max-w-3xl bg-gradient-to-br from-[#1a1038] via-[#241a44] to-[#1b1740] p-6 rounded-2xl shadow-2xl border border-purple-500/30"
+              >
+                <div className="flex items-start justify-between gap-4 mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-purple-500/20 rounded-lg">
+                      <FaChartLine className="text-purple-400" />
+                    </div>
+                    <h3 className="font-bold text-xl text-white">
+                      Calculate Attendance (Range)
+                    </h3>
+                  </div>
                   <button
-                    onClick={runCalculation}
-                    disabled={calcLoading}
-                    className="w-full px-4 py-2 rounded-lg bg-[#6C4AB6] text-white font-semibold hover:bg-[#8055f7] shadow-lg disabled:opacity-50"
+                    onClick={() => {
+                      setShowCalc(false);
+                      setCalcRows([]);
+                      setCalcError("");
+                    }}
+                    className="text-white/80 hover:text-white"
                   >
-                    {calcLoading ? "Calculating..." : "Run"}
+                    ✕
                   </button>
                 </div>
-              </div>
 
-              {calcError && (
-                <div className="mt-4">
-                  <Banner tone="error">{calcError}</Banner>
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-white/90 mb-2">
+                      Start date
+                    </label>
+                    <input
+                      type="date"
+                      value={calcStart}
+                      onChange={(e) => setCalcStart(e.target.value)}
+                      className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-white/90 mb-2">
+                      End date
+                    </label>
+                    <input
+                      type="date"
+                      value={calcEnd}
+                      onChange={(e) => setCalcEnd(e.target.value)}
+                      className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-white/90 mb-2">
+                      Holiday/Break days
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={holidayDays}
+                      onChange={(e) =>
+                        setHolidayDays(parseInt(e.target.value || "0", 10))
+                      }
+                      className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50"
+                    />
+                  </div>
+                  <div className="flex items-end">
+                    <button
+                      onClick={runCalculation}
+                      disabled={calcLoading}
+                      className="w-full px-4 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white font-semibold shadow-lg disabled:opacity-50 transition-all"
+                    >
+                      {calcLoading ? "Calculating..." : "Run"}
+                    </button>
+                  </div>
                 </div>
-              )}
 
-              <div className="mt-5 overflow-x-auto rounded-xl border border-white/20">
-                <table className="w-full text-sm">
-                  <thead className="bg-gradient-to-r from-[#1e0447]/90 to-[#372772]/90 sticky top-0">
-                    <tr>
-                      <th className="px-3 py-2 text-left text-[#cfcfcf]">
-                        Teacher
-                      </th>
-                      <th className="px-3 py-2 text-left text-[#cfcfcf]">
-                        Class
-                      </th>
-                      <th className="px-3 py-2 text-left text-[#cfcfcf] whitespace-nowrap">
-                        Present / School Days
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-white/10">
-                    {calcRows.length === 0 && !calcLoading && (
-                      <tr>
-                        <td colSpan={3} className="text-center text-white py-8">
-                          No data yet. Choose dates and click Run.
-                        </td>
+                {calcError && (
+                  <div className="mb-4">
+                    <Banner tone="error">{calcError}</Banner>
+                  </div>
+                )}
+
+                <div className="overflow-x-auto rounded-xl border border-white/20">
+                  <table className="w-full text-sm">
+                    <thead className="sticky top-0">
+                      <tr className="bg-gradient-to-r from-purple-600/30 to-purple-700/30">
+                        <th className="px-4 py-3 text-left text-white font-semibold">
+                          Teacher
+                        </th>
+                        <th className="px-4 py-3 text-left text-white font-semibold">
+                          Class
+                        </th>
+                        <th className="px-4 py-3 text-left text-white font-semibold">
+                          Present / School Days
+                        </th>
                       </tr>
-                    )}
-                    {calcRows.map((r) => (
-                      <tr key={r.id} className="even:bg-white/10">
-                        <td className="px-3 py-2 text-white">{r.name}</td>
-                        <td className="px-3 py-2 text-white/80">
-                          {r.className || "-"}
-                        </td>
-                        <td className="px-3 py-2 text-white">
-                          <span className="inline-block px-2 py-1 rounded-full text-xs font-bold bg-white/10 text-white">
-                            {r.present} / {r.schoolDays}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
+                    </thead>
+                    <tbody className="divide-y divide-white/10">
+                      {calcRows.length === 0 && !calcLoading && (
+                        <tr>
+                          <td
+                            colSpan={3}
+                            className="text-center text-white py-8"
+                          >
+                            No data yet. Choose dates and click Run.
+                          </td>
+                        </tr>
+                      )}
+                      {calcRows.map((r) => (
+                        <tr
+                          key={r.id}
+                          className="bg-white/5 hover:bg-white/10 transition-colors"
+                        >
+                          <td className="px-4 py-3 text-white font-medium">
+                            {r.name}
+                          </td>
+                          <td className="px-4 py-3 text-white/80">
+                            {r.className || "-"}
+                          </td>
+                          <td className="px-4 py-3 text-white">
+                            <span className="inline-block px-3 py-1 rounded-full text-xs font-bold bg-gradient-to-r from-purple-600 to-purple-700 text-white">
+                              {r.present} / {r.schoolDays}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
       </div>
 
       <ConfirmModal
@@ -1101,11 +1268,15 @@ export default function Teachers() {
         onConfirm={confirmDelete}
       />
 
-      <Toast
-        message={toast.message}
-        type={toast.type}
-        onClose={() => setToast({ message: "", type: "" })}
-      />
+      <AnimatePresence>
+        {toast.message && (
+          <Toast
+            message={toast.message}
+            type={toast.type}
+            onClose={() => setToast({ message: "", type: "" })}
+          />
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
@@ -1128,22 +1299,24 @@ function TeacherClassBlock({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2 }}
-      className="rounded-2xl backdrop-blur-2xl shadow-xl border border-white/20 p-4 sm:p-6"
+      className="rounded-xl bg-white/5 backdrop-blur-sm shadow-lg border border-white/10 p-4 sm:p-5"
     >
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-3">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <span className="text-lg sm:text-xl font-bold text-white">
             {className}
           </span>
-          <span className="text-sm bg-[#6C4AB6] text-white px-2 py-1 rounded-full">
-            {teachers.length} {teachers.length === 1 ? "teacher" : "teachers"}
+          <span className="text-sm bg-gradient-to-r from-purple-600 to-purple-700 text-white px-2.5 py-1 rounded-full font-semibold">
+            {teachers.length}
           </span>
         </div>
         <button
           onClick={onAdd}
           disabled={!canTeachers}
-          className={`flex items-center gap-2 text-sm px-4 py-2 rounded-lg bg-[#6C4AB6] text-white font-semibold hover:bg-[#8055f7] shadow-lg ${
-            !canTeachers ? "opacity-50 cursor-not-allowed" : ""
+          className={`flex items-center gap-2 text-sm px-4 py-2 rounded-lg font-semibold transition-all ${
+            !canTeachers
+              ? "bg-purple-600/30 opacity-50 cursor-not-allowed"
+              : "bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white"
           }`}
         >
           <FaPlus /> Add Teacher
@@ -1151,22 +1324,33 @@ function TeacherClassBlock({
       </div>
 
       {/* Desktop table */}
-      <div className="hidden sm:block w-full overflow-x-auto">
-        <table className="w-full text-sm rounded-xl">
-          <thead className="sticky top-0 z-10">
-            <tr className="bg-gradient-to-r from-[#1e0447]/90 to-[#372772]/90">
-              <th className="px-3 py-2 text-left text-[#cfcfcf]">Name</th>
-              <th className="px-3 py-2 text-left text-[#cfcfcf]">Status</th>
-              <th className="px-3 py-2 text-left text-[#cfcfcf]">Time</th>
-              <th className="px-3 py-2 text-left text-[#cfcfcf]">Present</th>
-              <th className="px-3 py-2 text-left text-[#cfcfcf]">Absent</th>
-              <th className="px-3 py-2 text-left text-[#cfcfcf]">Actions</th>
+      <div className="hidden md:block overflow-x-auto rounded-xl border border-white/20">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-gradient-to-r from-purple-600/30 to-purple-700/30 border-b border-white/20">
+              <th className="px-4 py-3 text-left text-white font-semibold">
+                Name
+              </th>
+              <th className="px-4 py-3 text-left text-white font-semibold">
+                Status
+              </th>
+              <th className="px-4 py-3 text-left text-white font-semibold">
+                Time
+              </th>
+              <th className="px-4 py-3 text-left text-white font-semibold">
+                Present
+              </th>
+              <th className="px-4 py-3 text-left text-white font-semibold">
+                Absent
+              </th>
+              <th className="px-4 py-3 text-left text-white font-semibold">
+                Actions
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-white/10">
             {teachers.map((t) => {
               const rec = attendanceRecords[t.id];
-
               const inThisTerm =
                 t?.lastTeacherAttendanceTermId &&
                 termId &&
@@ -1175,40 +1359,43 @@ function TeacherClassBlock({
               const termAbsent = inThisTerm ? Number(t.termAbsent || 0) : 0;
 
               return (
-                <tr key={t.id} className="even:bg-white/10">
-                  <td className="px-3 py-2 text-white">{t.name}</td>
+                <tr
+                  key={t.id}
+                  className="bg-white/5 hover:bg-white/10 transition-colors"
+                >
+                  <td className="px-4 py-3 text-white font-medium">{t.name}</td>
 
-                  <td className="px-3 py-2">
+                  <td className="px-4 py-3">
                     <span
-                      className={`inline-block px-2 py-1 rounded-full text-xs font-bold ${
+                      className={`inline-block px-3 py-1 rounded-full text-xs font-bold ${
                         rec?.status === "present"
-                          ? "bg-green-500/20 text-green-300"
+                          ? "bg-green-500/20 text-green-300 border border-green-400/30"
                           : rec?.status === "absent"
-                          ? "bg-red-500/20 text-red-300"
-                          : "bg-gray-500/20 text-gray-300"
+                          ? "bg-red-500/20 text-red-300 border border-red-400/30"
+                          : "bg-gray-500/20 text-gray-300 border border-gray-400/30"
                       }`}
                     >
                       {rec?.status ? rec.status : "not marked"}
                     </span>
                   </td>
 
-                  <td className="px-3 py-2 text-white">
+                  <td className="px-4 py-3 text-white">
                     {rec?.timestamp ? formatTime(rec.timestamp) : "-"}
                   </td>
 
-                  <td className="px-3 py-2 text-white">{termPresent}</td>
-                  <td className="px-3 py-2 text-white">{termAbsent}</td>
+                  <td className="px-4 py-3 text-white">{termPresent}</td>
+                  <td className="px-4 py-3 text-white">{termAbsent}</td>
 
-                  <td className="px-3 py-2">
+                  <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => onMark(t, "present")}
                         disabled={!canTeachers || viewingHistorical}
-                        className={`p-2 rounded-lg ${
+                        className={`p-2 rounded-lg transition-all ${
                           rec?.status === "present"
-                            ? "bg-green-500/30"
-                            : "bg-black/40 hover:bg-green-500/20"
-                        } text-green-400 ${
+                            ? "bg-green-500/30 text-green-400 border border-green-400/50"
+                            : "bg-white/5 hover:bg-green-500/20 text-green-400 border border-white/10"
+                        } ${
                           !canTeachers || viewingHistorical
                             ? "opacity-50 cursor-not-allowed"
                             : ""
@@ -1220,11 +1407,11 @@ function TeacherClassBlock({
                       <button
                         onClick={() => onMark(t, "absent")}
                         disabled={!canTeachers || viewingHistorical}
-                        className={`p-2 rounded-lg ${
+                        className={`p-2 rounded-lg transition-all ${
                           rec?.status === "absent"
-                            ? "bg-red-500/30"
-                            : "bg-black/40 hover:bg-red-500/20"
-                        } text-red-400 ${
+                            ? "bg-red-500/30 text-red-400 border border-red-400/50"
+                            : "bg-white/5 hover:bg-red-500/20 text-red-400 border border-white/10"
+                        } ${
                           !canTeachers || viewingHistorical
                             ? "opacity-50 cursor-not-allowed"
                             : ""
@@ -1236,7 +1423,7 @@ function TeacherClassBlock({
                       <button
                         onClick={() => onEdit(t)}
                         disabled={!canTeachers}
-                        className={`p-2 rounded-lg bg-black/40 hover:bg-white/10 text-white ${
+                        className={`p-2 rounded-lg bg-white/5 hover:bg-blue-500/20 text-blue-400 border border-white/10 transition-all ${
                           !canTeachers ? "opacity-50 cursor-not-allowed" : ""
                         }`}
                         title="Edit"
@@ -1246,7 +1433,7 @@ function TeacherClassBlock({
                       <button
                         onClick={() => onDelete(t)}
                         disabled={!canTeachers}
-                        className={`p-2 rounded-lg bg-black/40 hover:bg-red-500/10 text-red-400 ${
+                        className={`p-2 rounded-lg bg-white/5 hover:bg-red-500/20 text-red-400 border border-white/10 transition-all ${
                           !canTeachers ? "opacity-50 cursor-not-allowed" : ""
                         }`}
                         title="Delete"
@@ -1270,7 +1457,7 @@ function TeacherClassBlock({
       </div>
 
       {/* Mobile cards */}
-      <div className="sm:hidden space-y-3">
+      <div className="md:hidden space-y-3">
         {teachers.map((t) => {
           const rec = attendanceRecords[t.id];
           const inThisTerm =
@@ -1283,9 +1470,9 @@ function TeacherClassBlock({
           return (
             <div
               key={t.id}
-              className="bg-white/5 rounded-lg p-4 border border-white/10"
+              className="bg-white/5 rounded-xl p-4 border border-white/10"
             >
-              <div className="flex justify-between items-start">
+              <div className="flex justify-between items-start mb-2">
                 <div>
                   <h3 className="font-bold text-white">{t.name}</h3>
                   <p className="text-xs text-white/70">{className}</p>
@@ -1303,61 +1490,61 @@ function TeacherClassBlock({
                 </span>
               </div>
 
-              <div className="mt-2 text-xs text-white/80">
+              <div className="text-xs text-white/80 mb-1">
                 Time: {rec?.timestamp ? formatTime(rec.timestamp) : "-"}
               </div>
-              <div className="mt-1 text-xs text-white/80">
+              <div className="text-xs text-white/80 mb-3">
                 Present: {termPresent} • Absent: {termAbsent}
               </div>
 
-              <div className="flex gap-2 mt-3">
+              <div className="grid grid-cols-4 gap-2">
                 <button
                   onClick={() => onMark(t, "present")}
                   disabled={!canTeachers || viewingHistorical}
-                  className={`flex-1 p-2 rounded-lg ${
+                  className={`p-2 rounded-lg transition-all ${
                     rec?.status === "present"
                       ? "bg-green-500/30 text-green-300"
-                      : "bg-black/40 hover:bg-green-500/20 text-green-300"
+                      : "bg-white/5 hover:bg-green-500/20 text-green-300"
                   } ${
                     !canTeachers || viewingHistorical
                       ? "opacity-50 cursor-not-allowed"
                       : ""
                   }`}
                 >
-                  <FaCheck size={14} />
+                  <FaCheck size={14} className="mx-auto" />
                 </button>
                 <button
                   onClick={() => onMark(t, "absent")}
                   disabled={!canTeachers || viewingHistorical}
-                  className={`flex-1 p-2 rounded-lg ${
+                  className={`p-2 rounded-lg transition-all ${
                     rec?.status === "absent"
                       ? "bg-red-500/30 text-red-300"
-                      : "bg-black/40 hover:bg-red-500/20 text-red-300"
+                      : "bg-white/5 hover:bg-red-500/20 text-red-300"
                   } ${
                     !canTeachers || viewingHistorical
                       ? "opacity-50 cursor-not-allowed"
                       : ""
                   }`}
                 >
-                  <FaTimes size={14} />
+                  <FaTimes size={14} className="mx-auto" />
                 </button>
                 <button
                   onClick={() => onEdit(t)}
                   disabled={!canTeachers}
-                  className={`p-2 rounded-lg bg-black/40 hover:bg-white/10 text-white ${
+                  className={`p-2 rounded-lg bg-white/5 hover:bg-blue-500/20 text-blue-400 border border-white/10 transition-all ${
                     !canTeachers ? "opacity-50 cursor-not-allowed" : ""
                   }`}
                 >
-                  <FaEdit size={14} />
+                  <FaEdit size={14} className="mx-auto" />
                 </button>
                 <button
                   onClick={() => onDelete(t)}
                   disabled={!canTeachers}
-                  className={`p-2 rounded-lg bg-black/40 hover:bg-red-500/10 text-red-400 ${
+                  className={`p-2 rounded-lg bg-white/5 hover:bg-red-500/20 text-red-400 border border-white/10 transition-all ${
                     !canTeachers ? "opacity-50 cursor-not-allowed" : ""
                   }`}
                 >
-                  <FaTrash size={14} />
+                  <FaTrash size={14} className="mx-auto" />
                 </button>
               </div>
             </div>

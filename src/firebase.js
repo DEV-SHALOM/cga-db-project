@@ -6,6 +6,7 @@ import { getStorage } from "firebase/storage";  // Add this import
 
 
 
+
 const API_KEY = import.meta.env.VITE_API_KEY;
 const AUTH_DOMAIN = import.meta.env.VITE_AUTH_DOMAIN;
 const PROJECT_ID = import.meta.env.VITE_PROJECT_ID;

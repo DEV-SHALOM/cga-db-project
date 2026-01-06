@@ -1,4 +1,5 @@
 // src/hooks/useResults.js
+// ✅ UPDATED WITH SIGNATURE PERSISTENCE (Base64)
 import { useEffect, useState, useMemo } from "react";
 import {
   collection,
@@ -21,6 +22,7 @@ import { db } from "../firebase";
  * - load class subjects (classSubjects collection)
  * - load results for active term
  * - provide helpers to save results and compute attendance
+ * - ✅ NEW: Save and load signatures (Base64)
  */
 
 export function useStudentsByClass() {
@@ -74,7 +76,18 @@ export function useResultsForTerm(termId) {
       q,
       (snap) => {
         const m = {};
-        snap.docs.forEach((d) => m[d.id] = { id: d.id, ...d.data() });
+        snap.docs.forEach((d) => {
+          const data = d.data();
+          m[d.id] = { id: d.id, ...data };
+          
+          // ✅ Log signature presence for debugging
+          if (data.formTeacherSignature || data.principalSignature) {
+            console.log(`📋 Result ${d.id}:`, {
+              hasFormTeacherSig: !!data.formTeacherSignature,
+              hasPrincipalSig: !!data.principalSignature,
+            });
+          }
+        });
         setResultsMap(m);
       },
       (err) => {
@@ -105,21 +118,125 @@ export async function getStudentPresentDays(studentId, startKey=null, endKey=nul
   return count;
 }
 
-// save or update results document
+// ✅ UPDATED: save or update results document WITH ALL FIELDS INCLUDING SIGNATURES
 export async function saveStudentResult(termId, studentId, className, payload) {
-  // payload should include subjects array [{name, test, exam, total, grade, point}, ...], total, percentage, promoted
-  const docId = `${termId}_${studentId}`;
-  const ref = doc(db, "results", docId);
-  const data = {
-    termId,
-    studentId,
-    className,
-    ...payload,
-    updatedAt: Timestamp.now(),
-  };
-  // Use setDoc merge to create/update
-  await setDoc(ref, data, { merge: true });
-  return { id: docId, ...data };
+  // payload should include subjects array [{name, test, exam, total, grade, point}, ...], 
+  // total, percentage, promoted
+  // ✅ NEW: Also includes formTeacherSignature, principalSignature (Base64)
+  
+  try {
+    console.log("💾 Saving result to Firebase...");
+    console.log("- Term ID:", termId);
+    console.log("- Student ID:", studentId);
+    console.log("- Class:", className);
+    
+    const docId = `${termId}_${studentId}`;
+    const ref = doc(db, "results", docId);
+    
+    // ✅ Build complete data object with ALL fields
+    const data = {
+      termId,
+      studentId,
+      className,
+      
+      // Academic data
+      subjects: payload.subjects || [],
+      total: payload.total || 0,
+      percentage: payload.percentage || 0,
+      overallGrade: payload.overallGrade || "",
+      avgPoint: payload.avgPoint || 0,
+      passed: payload.passed || false,
+      promoted: payload.promoted || false,
+      
+      // Behavioral traits
+      behavioralTraits: payload.behavioralTraits || [],
+      
+      // Reports
+      formTeacherReport: payload.formTeacherReport || "",
+      formTeacherName: payload.formTeacherName || "",
+      principalReport: payload.principalReport || "",
+      
+      // ✅ SIGNATURES (Base64 strings)
+      formTeacherSignature: payload.formTeacherSignature || "",
+      principalSignature: payload.principalSignature || "",
+      
+      // Attendance & Class Info
+      classPosition: payload.classPosition || "",
+      noInClass: payload.noInClass || "",
+      totalSchoolDays: payload.totalSchoolDays || "",
+      daysPresent: payload.daysPresent || "",
+      daysAbsent: payload.daysAbsent || "",
+      
+      // Metadata
+      session: payload.session || "",
+      term: payload.term || "",
+      preparedBy: payload.preparedBy || "Admin",
+      updatedAt: payload.updatedAt || Timestamp.now(),
+      createdAt: payload.createdAt || Timestamp.now(),
+    };
+
+    // ✅ Log what's being saved (for debugging)
+    console.log("📝 Saving data:");
+    console.log("  - Subjects:", data.subjects.length);
+    console.log("  - Behavioral Traits:", data.behavioralTraits.length);
+    console.log("  - Form Teacher Report:", data.formTeacherReport ? "✅" : "❌");
+    console.log("  - Form Teacher Name:", data.formTeacherName || "Not set");
+    console.log("  - Form Teacher Signature:", data.formTeacherSignature 
+      ? `✅ (${Math.round(data.formTeacherSignature.length / 1024)}KB)` 
+      : "❌ Not set");
+    console.log("  - Principal Report:", data.principalReport ? "✅" : "❌");
+    console.log("  - Principal Signature:", data.principalSignature 
+      ? `✅ (${Math.round(data.principalSignature.length / 1024)}KB)` 
+      : "❌ Not set");
+    console.log("  - Class Position:", data.classPosition || "Not set");
+    console.log("  - Attendance:", {
+      total: data.totalSchoolDays,
+      present: data.daysPresent,
+      absent: data.daysAbsent
+    });
+    
+    // Use setDoc merge to create/update
+    await setDoc(ref, data, { merge: true });
+    
+    console.log("✅ Result saved successfully!");
+    return { id: docId, ...data };
+    
+  } catch (error) {
+    console.error("❌ Error saving result:", error);
+    throw error;
+  }
+}
+
+// ✅ NEW: Get a single student's result (useful for editing)
+export async function getStudentResult(termId, studentId) {
+  try {
+    console.log("📖 Loading result from Firebase...");
+    console.log("- Term ID:", termId);
+    console.log("- Student ID:", studentId);
+    
+    const docId = `${termId}_${studentId}`;
+    const ref = doc(db, "results", docId);
+    const snap = await getDoc(ref);
+
+    if (snap.exists()) {
+      const data = snap.data();
+      console.log("✅ Result found!");
+      console.log("  - Subjects:", data.subjects?.length || 0);
+      console.log("  - Form Teacher Signature:", data.formTeacherSignature ? "✅ Loaded" : "❌ Not found");
+      console.log("  - Principal Signature:", data.principalSignature ? "✅ Loaded" : "❌ Not found");
+      
+      return {
+        id: snap.id,
+        ...data,
+      };
+    } else {
+      console.log("⚠️ No result found for this student and term");
+      return null;
+    }
+  } catch (error) {
+    console.error("❌ Error loading result:", error);
+    throw error;
+  }
 }
 
 // create or update class subjects doc

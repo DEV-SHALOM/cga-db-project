@@ -1,6 +1,7 @@
 // src/pages/Students.jsx
+// ✅ COMPLETE VERSION - Base64 passport photos + Full table with Edit/Delete buttons
 import { useEffect, useMemo, useState } from "react";
-import { FaChevronDown, FaPlus, FaEdit, FaTrash } from "react-icons/fa";
+import { FaChevronDown, FaPlus, FaEdit, FaTrash, FaCamera } from "react-icons/fa";
 import { Listbox } from "@headlessui/react";
 import { motion } from "framer-motion";
 import {
@@ -18,7 +19,6 @@ import {
 } from "firebase/firestore";
 import { db } from "../firebase";
 
-// ⬇️ PERMISSION HOOK (make sure the path matches your project)
 import { usePermission } from "../hooks/usePermission";
 
 /* =========================================================
@@ -37,7 +37,6 @@ const ENTRY_PERF_OPTIONS = [
   { id: "poor", name: "Poor" },
 ];
 
-// --- helpers to create A/B streams ---
 const makeAB = (prefix, count) =>
   Array.from({ length: count }, (_, i) => {
     const n = i + 1;
@@ -46,13 +45,8 @@ const makeAB = (prefix, count) =>
 
 const classStructure = [
   { section: "Pre-Kg", classes: ["Pre-Kg"] },
-
-  // Nursery 1–3 with A/B
   { section: "Nursery", classes: makeAB("Nursery", 3) },
-
-  // Basic 1–5 with A/B
   { section: "Basic", classes: makeAB("Basic", 5) },
-
   {
     section: "Junior Secondary (JS)",
     classes: ["JS1 A", "JS1 B", "JS2 A", "JS2 B", "JS3 A", "JS3 B"],
@@ -191,15 +185,12 @@ async function generateStudentId() {
    ========================================================= */
 
 export default function StudentsPage() {
-  // ⬇️ PERMISSION GUARD
   const { user, perm, hasSection, isAdmin } = usePermission();
   const canStudents = isAdmin() || hasSection("students");
 
   const [openSection, setOpenSection] = useState("");
   const [students, setStudents] = useState({});
   const [showModal, setShowModal] = useState(false);
-
-  // activeClass is what will be saved to Firestore. We also make it editable in the modal now.
   const [activeClass, setActiveClass] = useState("");
 
   const [form, setForm] = useState({
@@ -211,10 +202,14 @@ export default function StudentsPage() {
     dateOfLeaving: "",
     reasonForLeaving: "",
     parentPhone: "",
-    // ⬇️ NEW FIELDS
-    entryPerformance: "", // stores id: "excellent" | "good" | "fair" | "poor"
-    medicalHistoryOrFitness: "", // free text
+    entryPerformance: "",
+    medicalHistoryOrFitness: "",
+    passportPhotoBase64: "",
   });
+
+  const [passportFile, setPassportFile] = useState(null);
+  const [passportPreview, setPassportPreview] = useState(null);
+  const [isUploadingPassport, setIsUploadingPassport] = useState(false);
 
   const [editId, setEditId] = useState(null);
   const [notification, setNotification] = useState(null);
@@ -225,7 +220,6 @@ export default function StudentsPage() {
     student: null,
   });
 
-  // ⬇️ ONLY SUBSCRIBE IF ALLOWED
   useEffect(() => {
     if (!canStudents) return;
 
@@ -250,8 +244,7 @@ export default function StudentsPage() {
     };
   }, [canStudents]);
 
-  // ⬇️ BLOCK RENDER UNTIL WE KNOW WHO THEY ARE
-  if (perm.loading) return null; // or spinner
+  if (perm.loading) return null;
   if (!user)
     return (
       <div className="min-h-screen w-full py-6 px-2 sm:px-8 pb-24 text-white flex items-center justify-center">
@@ -265,7 +258,7 @@ export default function StudentsPage() {
       </div>
     );
 
-  const resetForm = () =>
+  const resetForm = () => {
     setForm({
       studentId: "",
       name: "",
@@ -277,7 +270,58 @@ export default function StudentsPage() {
       parentPhone: "",
       entryPerformance: "",
       medicalHistoryOrFitness: "",
+      passportPhotoBase64: "",
     });
+    setPassportFile(null);
+    setPassportPreview(null);
+  };
+
+  const convertImageToBase64 = async (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      
+      reader.onloadend = () => {
+        const base64String = reader.result;
+        const sizeInMB = (base64String.length * 0.75) / 1024 / 1024;
+        if (sizeInMB > 0.9) {
+          reject(new Error("Image too large. Please compress it or use a smaller image (max ~800KB)."));
+          return;
+        }
+        resolve(base64String);
+      };
+      
+      reader.onerror = () => {
+        reject(new Error("Failed to read image file."));
+      };
+      
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handlePassportFileChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setNotification("Please select an image file (JPG, PNG, etc.)");
+      setTimeout(() => setNotification(null), 2500);
+      return;
+    }
+
+    if (file.size > 1.5 * 1024 * 1024) {
+      setNotification("Image must be less than 1.5MB. Please compress it first.");
+      setTimeout(() => setNotification(null), 2500);
+      return;
+    }
+
+    setPassportFile(file);
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setPassportPreview(reader.result);
+    };
+    reader.readAsDataURL(file);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -289,10 +333,10 @@ export default function StudentsPage() {
       !form.gender ||
       !activeClass ||
       !form.dateOfEntrance ||
-      !form.entryPerformance // ⬅️ require selection
+      !form.entryPerformance
     ) {
       setNotification(
-        "All fields except leaving date/reason are required. Don’t forget entry performance."
+        "All fields except leaving date/reason are required. Don't forget entry performance."
       );
       setTimeout(() => setNotification(null), 2500);
       return;
@@ -306,12 +350,28 @@ export default function StudentsPage() {
         newStudentId = await generateStudentId();
       }
 
+      let passportBase64 = form.passportPhotoBase64;
+      if (passportFile) {
+        try {
+          setIsUploadingPassport(true);
+          passportBase64 = await convertImageToBase64(passportFile);
+        } catch (error) {
+          setNotification(error.message);
+          setTimeout(() => setNotification(null), 3500);
+          setIsSubmitting(false);
+          setIsUploadingPassport(false);
+          return;
+        } finally {
+          setIsUploadingPassport(false);
+        }
+      }
+
       const payload = {
         studentId: newStudentId,
         name: form.name,
         age: form.age,
         gender: form.gender,
-        className: activeClass, // ⬅️ editable now
+        className: activeClass,
         dateOfEntrance: Timestamp.fromDate(new Date(form.dateOfEntrance)),
         dateOfLeaving: form.dateOfLeaving
           ? Timestamp.fromDate(new Date(form.dateOfLeaving))
@@ -320,9 +380,9 @@ export default function StudentsPage() {
         parentPhone: form.parentPhone || "nil",
         monthlyAttendance: 0,
         totalAttendance: 0,
-        // ⬇️ NEW FIELDS saved to Firestore
         academicPerformanceAtEntryPoint: form.entryPerformance,
         medicalHistoryOrFitness: (form.medicalHistoryOrFitness || "").trim(),
+        passportPhotoBase64: passportBase64 || "",
       };
 
       if (editId) {
@@ -344,7 +404,7 @@ export default function StudentsPage() {
 
   const handleEdit = (student) => {
     setShowModal(true);
-    setActiveClass(student.className); // ⬅️ keep class editable
+    setActiveClass(student.className);
     setEditId(student.id);
     setForm({
       studentId: student.studentId || "",
@@ -366,7 +426,11 @@ export default function StudentsPage() {
           : "",
       entryPerformance: student.academicPerformanceAtEntryPoint || "",
       medicalHistoryOrFitness: student.medicalHistoryOrFitness || "",
+      passportPhotoBase64: student.passportPhotoBase64 || "",
     });
+    if (student.passportPhotoBase64) {
+      setPassportPreview(student.passportPhotoBase64);
+    }
   };
 
   const showDeleteConfirmation = (student) => {
@@ -391,11 +455,8 @@ export default function StudentsPage() {
       hideDeleteConfirmation();
 
       const batch = writeBatch(db);
-
-      // Delete student record
       batch.delete(doc(db, "students", id));
 
-      // Delete all fee records for this student
       const feesQuery = query(
         collection(db, "payments"),
         where("studentId", "==", studentId)
@@ -405,7 +466,6 @@ export default function StudentsPage() {
         batch.delete(d.ref);
       });
 
-      // Delete all attendance records for this student across all dates
       const attendanceQuery = query(collection(db, "dailyAttendance"));
       const attendanceSnapshot = await getDocs(attendanceQuery);
 
@@ -474,7 +534,6 @@ export default function StudentsPage() {
           Student Management
         </motion.h2>
 
-        {/* Sections */}
         <div className="space-y-8">
           {classStructure.map((section) => {
             const sectionStudents = section.classes.reduce(
@@ -600,7 +659,6 @@ export default function StudentsPage() {
                     <label className="block text-xs text-white mb-1">
                       Class
                     </label>
-                    {/* ⬇️ Editable class selector */}
                     <GlassListbox
                       value={activeClass}
                       onChange={setActiveClass}
@@ -627,6 +685,45 @@ export default function StudentsPage() {
                     required
                     disabled={isSubmitting}
                   />
+                </div>
+
+                <div>
+                  <label className="block text-xs text-white mb-1">
+                    Passport Photo (max 1MB)
+                  </label>
+                  <div className="flex flex-col gap-2">
+                    {passportPreview && (
+                      <div className="relative w-24 h-24 rounded-lg overflow-hidden border-2 border-[#8055f7]">
+                        <img
+                          src={passportPreview}
+                          alt="Passport preview"
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                    )}
+                    
+                    <label className="cursor-pointer">
+                      <div className="flex items-center gap-2 border border-[#e7e2f8] rounded-lg px-4 py-2 bg-white/10 text-white hover:bg-white/20 transition text-sm">
+                        <FaCamera className="text-[#8055f7]" />
+                        <span>
+                          {passportPreview ? "Change Photo" : "Upload Photo"}
+                        </span>
+                      </div>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handlePassportFileChange}
+                        className="hidden"
+                        disabled={isSubmitting || isUploadingPassport}
+                      />
+                    </label>
+                    
+                    {passportFile && (
+                      <p className="text-xs text-white/70">
+                        Selected: {passportFile.name}
+                      </p>
+                    )}
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
@@ -662,7 +759,6 @@ export default function StudentsPage() {
                   </div>
                 </div>
 
-                {/* ⬇️ Academic performance at entry point */}
                 <div>
                   <label className="block text-xs text-white mb-1">
                     Academic performance at entry point
@@ -679,7 +775,6 @@ export default function StudentsPage() {
                   />
                 </div>
 
-                {/* ⬇️ Medical history / fitness */}
                 <div>
                   <label className="block text-xs text-white mb-1">
                     Medical history / fitness
@@ -782,16 +877,16 @@ export default function StudentsPage() {
                       setEditId(null);
                       resetForm();
                     }}
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || isUploadingPassport}
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     className="px-5 py-1.5 bg-[#6C4AB6] text-white font-semibold rounded-lg hover:bg-[#8055f7] transition text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center min-w-[80px]"
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || isUploadingPassport}
                   >
-                    {isSubmitting ? (
+                    {isSubmitting || isUploadingPassport ? (
                       <>
                         <svg
                           className="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
@@ -813,7 +908,11 @@ export default function StudentsPage() {
                             d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                           ></path>
                         </svg>
-                        {editId ? "Updating..." : "Adding..."}
+                        {isUploadingPassport
+                          ? "Processing..."
+                          : editId
+                          ? "Updating..."
+                          : "Adding..."}
                       </>
                     ) : editId ? (
                       "Update"
@@ -842,7 +941,6 @@ export default function StudentsPage() {
         )}
       </div>
 
-      {/* Sidebar scrollbar theme (fixed placement) */}
       <style>{`
         .custom-scroll::-webkit-scrollbar { width: 8px; }
         .custom-scroll::-webkit-scrollbar-track { background: transparent; }
@@ -854,16 +952,11 @@ export default function StudentsPage() {
         .custom-scroll:hover::-webkit-scrollbar-thumb {
           background: rgba(128, 85, 247, 0.55);
         }
-        /* Firefox */
         .custom-scroll { scrollbar-width: thin; scrollbar-color: rgba(128,85,247,0.55) transparent; }
       `}</style>
     </motion.div>
   );
 }
-
-/* =========================================================
-   Delete Modal
-   ========================================================= */
 
 function DeleteConfirmationModal({ student, onConfirm, onCancel, isDeleting }) {
   return (
@@ -887,7 +980,7 @@ function DeleteConfirmationModal({ student, onConfirm, onCancel, isDeleting }) {
           </p>
           <p className="text-red-300 mt-2 text-sm">
             This will permanently delete all student records including
-            attendance and payments.
+            attendance, payments, and passport photo.
           </p>
         </div>
         <div className="flex gap-3 justify-end">
@@ -925,7 +1018,7 @@ function DeleteConfirmationModal({ student, onConfirm, onCancel, isDeleting }) {
                     className="opacity-75"
                     fill="currentColor"
                     d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  ></path>
+                          ></path>
                 </svg>
                 Deleting...
               </>
@@ -939,10 +1032,7 @@ function DeleteConfirmationModal({ student, onConfirm, onCancel, isDeleting }) {
   );
 }
 
-/* =========================================================
-   Section Table (with search)
-   ========================================================= */
-
+// ✅ COMPLETE TABLE COMPONENT - Shows all students with Edit/Delete buttons
 function StudentSectionTable({
   className,
   students,
@@ -985,7 +1075,6 @@ function StudentSectionTable({
           </span>
         </div>
 
-        {/* Search + Add */}
         <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
           <div className="relative">
             <input

@@ -1,8 +1,18 @@
 // src/components/ResultEditorModal.jsx
+// ✅ WITH SIGNATURE UPLOADS (Base64) + IMPROVED CLOSE BUTTON
 import { useEffect, useState } from "react";
 import { gradeFromScore, saveStudentResult } from "../hooks/useResults";
-import { Timestamp, doc, getDoc, collection, getDocs, query, where } from "firebase/firestore";
+import {
+  Timestamp,
+  doc,
+  getDoc,
+  collection,
+  getDocs,
+  query,
+  where,
+} from "firebase/firestore";
 import { db } from "../firebase";
+import { FaTimes, FaCamera } from "react-icons/fa";
 
 /**
  * Props:
@@ -26,16 +36,13 @@ export default function ResultEditorModal({
   classSubjects = [],
   onSaved,
 }) {
-  const defaultSubjects = classSubjects.length
-    ? classSubjects
-    : ["English", "Mathematics"];
-
   // Get current session if not provided (e.g., 2024/2025)
   const currentYear = new Date().getFullYear();
   const nextYear = currentYear + 1;
   const defaultSession = session || `${currentYear}/${nextYear}`;
 
   // Initialize subjects with the new structure
+  // ✅ Only load existing subjects OR class subjects - NO default fallback
   const initialSubjects =
     existing && existing.subjects
       ? existing.subjects.map((s) => ({
@@ -48,7 +55,8 @@ export default function ResultEditorModal({
           point: s.point || 0,
           remark: s.remark || "",
         }))
-      : defaultSubjects.map((name) => ({
+      : classSubjects.length > 0
+      ? classSubjects.map((name) => ({
           name,
           firstCA: "",
           secondCA: "",
@@ -57,7 +65,8 @@ export default function ResultEditorModal({
           grade: "",
           point: 0,
           remark: "",
-        }));
+        }))
+      : [];
 
   // Initialize behavioral traits with 1-5 rating
   const initialBehavioralTraits = [
@@ -92,21 +101,117 @@ export default function ResultEditorModal({
   const [classPosition, setClassPosition] = useState(
     existing?.classPosition || ""
   );
-  const [noInClass, setNoInClass] = useState(""); // Will be fetched from Firebase
+  const [noInClass, setNoInClass] = useState("");
   const [totalSchoolDays, setTotalSchoolDays] = useState(
     existing?.totalSchoolDays || ""
   );
-  const [daysPresent, setDaysPresent] = useState(""); // Will be fetched from Firebase
-  const [daysAbsent, setDaysAbsent] = useState(""); // Will be calculated
-  
-  // For fetching data
+  const [daysPresent, setDaysPresent] = useState("");
+  const [daysAbsent, setDaysAbsent] = useState("");
+
+  // ✅ NEW: Signature states
+  const [formTeacherSignature, setFormTeacherSignature] = useState(
+    existing?.formTeacherSignature || ""
+  );
+  const [principalSignature, setPrincipalSignature] = useState(
+    existing?.principalSignature || ""
+  );
+  const [formTeacherSigPreview, setFormTeacherSigPreview] = useState(
+    existing?.formTeacherSignature || ""
+  );
+  const [principalSigPreview, setPrincipalSigPreview] = useState(
+    existing?.principalSignature || ""
+  );
+  const [isUploadingFormTeacherSig, setIsUploadingFormTeacherSig] =
+    useState(false);
+  const [isUploadingPrincipalSig, setIsUploadingPrincipalSig] = useState(false);
+
   const [isFetchingData, setIsFetchingData] = useState(false);
+
+  // ✅ Base64 conversion function
+  const convertImageToBase64 = async (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+
+      reader.onloadend = () => {
+        const base64String = reader.result;
+        const sizeInMB = (base64String.length * 0.75) / 1024 / 1024;
+        if (sizeInMB > 0.5) {
+          reject(
+            new Error(
+              "Signature image too large. Please use a smaller image (max ~400KB)."
+            )
+          );
+          return;
+        }
+        resolve(base64String);
+      };
+
+      reader.onerror = () => {
+        reject(new Error("Failed to read signature image."));
+      };
+
+      reader.readAsDataURL(file);
+    });
+  };
+
+  // ✅ Form Teacher Signature Upload
+  const handleFormTeacherSigChange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      alert("Please select an image file (JPG, PNG, etc.)");
+      return;
+    }
+
+    if (file.size > 800 * 1024) {
+      alert("Signature must be less than 800KB. Please compress it first.");
+      return;
+    }
+
+    setIsUploadingFormTeacherSig(true);
+    try {
+      const base64 = await convertImageToBase64(file);
+      setFormTeacherSignature(base64);
+      setFormTeacherSigPreview(base64);
+    } catch (error) {
+      alert(error.message);
+    } finally {
+      setIsUploadingFormTeacherSig(false);
+    }
+  };
+
+  // ✅ Principal Signature Upload
+  const handlePrincipalSigChange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      alert("Please select an image file (JPG, PNG, etc.)");
+      return;
+    }
+
+    if (file.size > 800 * 1024) {
+      alert("Signature must be less than 800KB. Please compress it first.");
+      return;
+    }
+
+    setIsUploadingPrincipalSig(true);
+    try {
+      const base64 = await convertImageToBase64(file);
+      setPrincipalSignature(base64);
+      setPrincipalSigPreview(base64);
+    } catch (error) {
+      alert(error.message);
+    } finally {
+      setIsUploadingPrincipalSig(false);
+    }
+  };
 
   // Validate if a string is a valid number within range
   const validateNumberInput = (value, max) => {
     if (value === "") return { isValid: true, numValue: 0 };
 
-    // Remove any non-numeric characters except decimal point
     const cleaned = value.replace(/[^0-9.]/g, "");
     const numValue = parseFloat(cleaned);
 
@@ -114,7 +219,6 @@ export default function ResultEditorModal({
       return { isValid: false, numValue: 0 };
     }
 
-    // Check if within range
     if (numValue < 0) {
       return { isValid: false, numValue: 0 };
     }
@@ -129,22 +233,19 @@ export default function ResultEditorModal({
   // Fetch all required data from Firebase
   const fetchStudentData = async () => {
     if (!student?.id || !student?.className) return;
-    
+
     setIsFetchingData(true);
     try {
-      // 1. Fetch student attendance data
       const studentRef = doc(db, "students", student.id);
       const studentSnap = await getDoc(studentRef);
-      
+
       if (studentSnap.exists()) {
         const studentData = studentSnap.data();
-        
-        // Get term-specific attendance data
+
         if (studentData.lastAttendanceTermId === termId) {
           const presentDays = studentData.termTimesPresent || 0;
           setDaysPresent(presentDays.toString());
-          
-          // Calculate absent days if total school days is set
+
           if (totalSchoolDays) {
             const absent = parseInt(totalSchoolDays) - presentDays;
             setDaysAbsent(Math.max(0, absent).toString());
@@ -152,7 +253,6 @@ export default function ResultEditorModal({
         }
       }
 
-      // 2. Fetch number of students in the same class
       const studentsQuery = query(
         collection(db, "students"),
         where("className", "==", student.className)
@@ -160,7 +260,6 @@ export default function ResultEditorModal({
       const studentsSnapshot = await getDocs(studentsQuery);
       const classCount = studentsSnapshot.size;
       setNoInClass(classCount.toString());
-
     } catch (error) {
       console.error("Error fetching student data:", error);
     } finally {
@@ -170,55 +269,72 @@ export default function ResultEditorModal({
 
   useEffect(() => {
     if (open && student?.id) {
+      // ✅ Reset all fields first
       setSubjects(initialSubjects);
       setPromote(existing?.promoted ?? null);
+      setBehavioralTraits(
+        existing?.behavioralTraits || initialBehavioralTraits
+      );
+      setFormTeacherReport(existing?.formTeacherReport || "");
+      setFormTeacherName(existing?.formTeacherName || "");
+      setPrincipalReport(existing?.principalReport || "");
+      setClassPosition(existing?.classPosition || "");
+      setTotalSchoolDays(existing?.totalSchoolDays || "");
+      setDaysPresent(existing?.daysPresent || "");
+      setDaysAbsent(existing?.daysAbsent || "");
 
-      // Initialize behavioral traits from existing data if available
-      if (existing && existing.behavioralTraits) {
-        setBehavioralTraits(existing.behavioralTraits);
-      }
+      // ✅ Load existing signatures
+      setFormTeacherSignature(existing?.formTeacherSignature || "");
+      setFormTeacherSigPreview(existing?.formTeacherSignature || "");
+      setPrincipalSignature(existing?.principalSignature || "");
+      setPrincipalSigPreview(existing?.principalSignature || "");
 
-      if (existing && existing.formTeacherReport) {
-        setFormTeacherReport(existing.formTeacherReport);
-      }
-
-      if (existing && existing.formTeacherName) {
-        setFormTeacherName(existing.formTeacherName);
-      }
-
-      if (existing && existing.principalReport) {
-        setPrincipalReport(existing.principalReport);
-      }
-
-      if (existing && existing.classPosition) {
-        setClassPosition(existing.classPosition);
-      }
-
-      if (existing && existing.totalSchoolDays) {
-        setTotalSchoolDays(existing.totalSchoolDays);
-      }
-
-      if (existing && existing.daysPresent) {
-        setDaysPresent(existing.daysPresent);
-      }
-
-      if (existing && existing.daysAbsent) {
-        setDaysAbsent(existing.daysAbsent);
-      } else if (existing?.totalSchoolDays && existing?.daysPresent) {
-        // Calculate absent days from existing data
+      // Calculate days absent if not provided
+      if (
+        !existing?.daysAbsent &&
+        existing?.totalSchoolDays &&
+        existing?.daysPresent
+      ) {
         const total = parseInt(existing.totalSchoolDays) || 0;
         const present = parseInt(existing.daysPresent) || 0;
         const absent = Math.max(0, total - present);
         setDaysAbsent(absent.toString());
       }
 
-      // Fetch live data from Firebase
+      // Fetch attendance and class count
       fetchStudentData();
+
+      // Log what was loaded
+      console.log("📋 Loading existing result data:");
+      console.log("- Subjects:", existing?.subjects?.length || 0);
+      console.log(
+        "- Behavioral Traits:",
+        existing?.behavioralTraits?.length || 0
+      );
+      console.log(
+        "- Form Teacher Report:",
+        existing?.formTeacherReport ? "✅" : "❌"
+      );
+      console.log(
+        "- Form Teacher Name:",
+        existing?.formTeacherName || "Not set"
+      );
+      console.log(
+        "- Form Teacher Signature:",
+        existing?.formTeacherSignature ? "✅ Loaded" : "❌ Not found"
+      );
+      console.log(
+        "- Principal Report:",
+        existing?.principalReport ? "✅" : "❌"
+      );
+      console.log(
+        "- Principal Signature:",
+        existing?.principalSignature ? "✅ Loaded" : "❌ Not found"
+      );
     }
     // eslint-disable-next-line
   }, [open, existing, student?.id]);
 
-  // Calculate absent days when total school days changes
   useEffect(() => {
     if (totalSchoolDays && daysPresent) {
       const total = parseInt(totalSchoolDays) || 0;
@@ -235,7 +351,6 @@ export default function ResultEditorModal({
       const next = prev.slice();
       next[index] = { ...next[index], [field]: value };
 
-      // Recompute totals and grade based on all three components
       const firstCAValidation = validateNumberInput(
         next[index].firstCA || "",
         15
@@ -272,7 +387,7 @@ export default function ResultEditorModal({
   }
 
   function computeSummary() {
-    const totalPossible = subjects.length * 100; // assuming each subject max 100
+    const totalPossible = subjects.length * 100;
     const totalObtained = subjects.reduce(
       (s, x) => s + Number(x.total || 0),
       0
@@ -286,8 +401,7 @@ export default function ResultEditorModal({
       subjects.length > 0
         ? subjects.every((s) => Number(s.total || 0) >= 40)
         : false;
-    
-    // Calculate grade based on percentage
+
     let overallGrade = "F";
     if (percentage >= 75) overallGrade = "A";
     else if (percentage >= 70) overallGrade = "AB";
@@ -307,7 +421,6 @@ export default function ResultEditorModal({
     };
   }
 
-  // Check if any subject has incomplete scores
   function hasIncompleteScores() {
     return subjects.some((s) => {
       const firstCA = s.firstCA.trim();
@@ -317,7 +430,6 @@ export default function ResultEditorModal({
     });
   }
 
-  // Handle total school days change - recalculate absent days
   const handleTotalSchoolDaysChange = (value) => {
     setTotalSchoolDays(value);
     if (value && daysPresent) {
@@ -333,7 +445,11 @@ export default function ResultEditorModal({
   async function handleSave() {
     if (!termId || !student) return;
 
-    // Check for incomplete scores
+    if (subjects.length === 0) {
+      alert("Please add at least one subject before saving the result.");
+      return;
+    }
+
     if (hasIncompleteScores()) {
       if (
         !window.confirm("Some subjects have incomplete scores. Save anyway?")
@@ -350,7 +466,9 @@ export default function ResultEditorModal({
         behavioralTraits,
         formTeacherReport,
         formTeacherName,
+        formTeacherSignature, // ✅ Base64 signature
         principalReport,
+        principalSignature, // ✅ Base64 signature
         classPosition,
         noInClass,
         daysPresent,
@@ -367,16 +485,46 @@ export default function ResultEditorModal({
         preparedBy: "Bursar / Admin",
         updatedAt: Timestamp.now(),
       };
+
+      // ✅ Log what's being saved
+      console.log("💾 Saving result with data:");
+      console.log("- Subjects:", payload.subjects.length);
+      console.log("- Behavioral Traits:", payload.behavioralTraits.length);
+      console.log(
+        "- Form Teacher Report:",
+        payload.formTeacherReport ? "✅" : "❌"
+      );
+      console.log("- Form Teacher Name:", payload.formTeacherName || "Not set");
+      console.log(
+        "- Form Teacher Signature:",
+        payload.formTeacherSignature
+          ? `✅ (${Math.round(payload.formTeacherSignature.length / 1024)}KB)`
+          : "❌ Not set"
+      );
+      console.log("- Principal Report:", payload.principalReport ? "✅" : "❌");
+      console.log(
+        "- Principal Signature:",
+        payload.principalSignature
+          ? `✅ (${Math.round(payload.principalSignature.length / 1024)}KB)`
+          : "❌ Not set"
+      );
+      console.log("- Class Position:", payload.classPosition || "Not set");
+      console.log("- Attendance - Total Days:", payload.totalSchoolDays);
+      console.log("- Attendance - Present:", payload.daysPresent);
+      console.log("- Attendance - Absent:", payload.daysAbsent);
+
       await saveStudentResult(
         termId,
         student.id,
         student.className || student.class,
         payload
       );
+
+      console.log("✅ Result saved successfully!");
       onSaved && onSaved();
       onClose && onClose();
     } catch (e) {
-      console.error(e);
+      console.error("❌ Save failed:", e);
       alert("Failed to save result: " + (e.message || e));
     } finally {
       setLoading(false);
@@ -386,24 +534,28 @@ export default function ResultEditorModal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-2 md:p-4">
+    <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center pt-2 md:p-4">
       <div className="w-full max-w-6xl bg-gradient-to-tr from-[#1a1038] via-[#241a44] to-[#1b1740] p-4 md:p-6 rounded-2xl border border-purple-500/30 shadow-2xl shadow-purple-900/30 max-h-[95vh] overflow-y-auto">
-        <div className="flex items-center justify-between mb-6 sticky top-0 bg-[#1a1038] py-2 z-10">
+        {/* ✅ IMPROVED CLOSE BUTTON - Sticky header with better UX */}
+        <div className="sticky top-0 z-20 bg-gradient-to-r from-[#1a1038] to-[#241a44] -mx-4 md:-mx-6 -mt-4 md:-mt-6 px-4 md:px-6 py-3 md:py-4 flex items-center justify-between border-b border-purple-500/20 mb-6">
           <h3 className="text-white font-bold text-lg md:text-xl">
             Edit Result — {student?.name || "Student"}
           </h3>
           <button
             onClick={onClose}
-            className="text-white/80 hover:text-white text-lg md:text-xl"
+            className="flex items-center justify-center w-10 h-10 md:w-12 md:h-12 rounded-full bg-red-500/20 hover:bg-red-500/30 text-red-400 hover:text-red-300 transition-all duration-200 border border-red-500/30 hover:border-red-500/50 hover:scale-110"
+            title="Close"
           >
-            ✕
+            <FaTimes className="text-xl md:text-2xl" />
           </button>
         </div>
 
         <div className="space-y-6">
           {/* Student Information Section */}
           <div className="bg-[#2a2250] rounded-lg border border-white/10 p-4">
-            <h4 className="text-white font-bold mb-4 text-lg">Student Information</h4>
+            <h4 className="text-white font-bold mb-4 text-lg">
+              Student Information
+            </h4>
             <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
               <div>
                 <label className="text-xs text-white/90 mb-1 block">Name</label>
@@ -412,13 +564,17 @@ export default function ResultEditorModal({
                 </div>
               </div>
               <div>
-                <label className="text-xs text-white/90 mb-1 block">Class</label>
+                <label className="text-xs text-white/90 mb-1 block">
+                  Class
+                </label>
                 <div className="w-full px-3 py-2 rounded bg-[#362b68]/40 border border-white/10 text-white">
                   {student?.className || student?.class || "—"}
                 </div>
               </div>
               <div>
-                <label className="text-xs text-white/90 mb-1 block">Admission No</label>
+                <label className="text-xs text-white/90 mb-1 block">
+                  Admission No
+                </label>
                 <div className="w-full px-3 py-2 rounded bg-[#362b68]/40 border border-white/10 text-white">
                   {student?.admissionNo || student?.studentId || "—"}
                 </div>
@@ -430,13 +586,17 @@ export default function ResultEditorModal({
                 </div>
               </div>
               <div>
-                <label className="text-xs text-white/90 mb-1 block">Session</label>
+                <label className="text-xs text-white/90 mb-1 block">
+                  Session
+                </label>
                 <div className="w-full px-3 py-2 rounded bg-[#362b68]/40 border border-white/10 text-white">
                   {defaultSession}
                 </div>
               </div>
               <div>
-                <label className="text-xs text-white/90 mb-1 block">Gender</label>
+                <label className="text-xs text-white/90 mb-1 block">
+                  Gender
+                </label>
                 <div className="w-full px-3 py-2 rounded bg-[#362b68]/40 border border-white/10 text-white">
                   {student?.gender || "—"}
                 </div>
@@ -446,10 +606,14 @@ export default function ResultEditorModal({
 
           {/* Academic Performance Summary */}
           <div className="bg-[#2a2250] rounded-lg border border-white/10 p-4">
-            <h4 className="text-white font-bold mb-4 text-lg">Academic Performance</h4>
+            <h4 className="text-white font-bold mb-4 text-lg">
+              Academic Performance
+            </h4>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div>
-                <label className="text-xs text-white/90 mb-1 block">No. in Class</label>
+                <label className="text-xs text-white/90 mb-1 block">
+                  No. in Class
+                </label>
                 <input
                   type="text"
                   value={noInClass}
@@ -457,11 +621,15 @@ export default function ResultEditorModal({
                   className="w-full text-sm px-3 py-2 rounded bg-[#362b68]/40 border border-white/10 text-white opacity-90 cursor-not-allowed"
                 />
                 {isFetchingData && (
-                  <div className="text-xs text-white/60 mt-1">Loading from system...</div>
+                  <div className="text-xs text-white/60 mt-1">
+                    Loading from system...
+                  </div>
                 )}
               </div>
               <div>
-                <label className="text-xs text-white/90 mb-1 block">Total School Days</label>
+                <label className="text-xs text-white/90 mb-1 block">
+                  Total School Days
+                </label>
                 <input
                   type="text"
                   value={totalSchoolDays}
@@ -471,7 +639,9 @@ export default function ResultEditorModal({
                 />
               </div>
               <div>
-                <label className="text-xs text-white/90 mb-1 block">Days Present</label>
+                <label className="text-xs text-white/90 mb-1 block">
+                  Days Present
+                </label>
                 <input
                   type="text"
                   value={daysPresent}
@@ -479,11 +649,15 @@ export default function ResultEditorModal({
                   className="w-full text-sm px-3 py-2 rounded bg-[#362b68]/40 border border-white/10 text-white opacity-90 cursor-not-allowed"
                 />
                 {isFetchingData && (
-                  <div className="text-xs text-white/60 mt-1">Loading from attendance...</div>
+                  <div className="text-xs text-white/60 mt-1">
+                    Loading from attendance...
+                  </div>
                 )}
               </div>
               <div>
-                <label className="text-xs text-white/90 mb-1 block">Days Absent</label>
+                <label className="text-xs text-white/90 mb-1 block">
+                  Days Absent
+                </label>
                 <input
                   type="text"
                   value={daysAbsent}
@@ -497,15 +671,18 @@ export default function ResultEditorModal({
                 )}
               </div>
             </div>
-            
-            {/* Attendance Help Text */}
+
             <div className="mt-4 text-sm text-white/70">
               <p className="mb-2">
-                <strong>Note:</strong> 
-                <span className="ml-1">Days Present is loaded from the attendance system.</span>
+                <strong>Note:</strong>
+                <span className="ml-1">
+                  Days Present is loaded from the attendance system.
+                </span>
               </p>
               <p>
-                <span className="text-green-400">✓ Days Absent is automatically calculated.</span>
+                <span className="text-green-400">
+                  ✓ Days Absent is automatically calculated.
+                </span>
               </p>
             </div>
           </div>
@@ -515,83 +692,96 @@ export default function ResultEditorModal({
             <h4 className="text-white font-bold mb-4 text-lg">
               Academic Subjects
             </h4>
-            <div className="space-y-3">
-              {subjects.map((s, i) => (
-                <div
-                  key={`subject-${i}`}
-                  className="grid grid-cols-1 lg:grid-cols-12 gap-2 items-end p-3 bg-[#362b68]/40 rounded border border-white/10"
-                >
-                  <div className="lg:col-span-3">
-                    <label className="text-xs text-white/90 mb-1 block">
-                      Subject
-                    </label>
-                    <div className="w-full text-sm px-3 py-2 rounded bg-[#362b68]/40 border border-white/10 text-white opacity-90">
-                      {s.name}
+
+            {subjects.length === 0 ? (
+              <div className="text-center py-8 text-white/70">
+                <p className="mb-2">No subjects configured for this student.</p>
+                <p className="text-sm">
+                  Please configure class subjects in the system or add subjects
+                  manually.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {subjects.map((s, i) => (
+                  <div
+                    key={`subject-${i}`}
+                    className="grid grid-cols-1 lg:grid-cols-12 gap-2 items-end p-3 bg-[#362b68]/40 rounded border border-white/10"
+                  >
+                    <div className="lg:col-span-3">
+                      <label className="text-xs text-white/90 mb-1 block">
+                        Subject
+                      </label>
+                      <div className="w-full text-sm px-3 py-2 rounded bg-[#362b68]/40 border border-white/10 text-white opacity-90">
+                        {s.name}
+                      </div>
+                    </div>
+
+                    <div className="lg:col-span-2">
+                      <label className="text-xs text-white/90 mb-1 block">
+                        First CA
+                      </label>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={s.firstCA}
+                        onChange={(e) =>
+                          updateSubject(i, "firstCA", e.target.value)
+                        }
+                        className="w-full text-sm px-3 py-2 rounded bg-[#362b68]/70 border border-white/10 text-white focus:outline-none focus:border-purple-500/50"
+                        placeholder="0-15"
+                      />
+                    </div>
+
+                    <div className="lg:col-span-2">
+                      <label className="text-xs text-white/90 mb-1 block">
+                        Second CA
+                      </label>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={s.secondCA}
+                        onChange={(e) =>
+                          updateSubject(i, "secondCA", e.target.value)
+                        }
+                        className="w-full text-sm px-3 py-2 rounded bg-[#362b68]/70 border border-white/10 text-white focus:outline-none focus:border-purple-500/50"
+                        placeholder="0-15"
+                      />
+                    </div>
+
+                    <div className="lg:col-span-2">
+                      <label className="text-xs text-white/90 mb-1 block">
+                        Exam
+                      </label>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={s.exam}
+                        onChange={(e) =>
+                          updateSubject(i, "exam", e.target.value)
+                        }
+                        className="w-full text-sm px-3 py-2 rounded bg-[#362b68]/70 border border-white/10 text-white focus:outline-none focus:border-purple-500/50"
+                        placeholder="0-70"
+                      />
+                    </div>
+
+                    <div className="lg:col-span-2 text-center p-2 bg-[#362b68]/60 rounded">
+                      <div className="text-xs text-white/80">Total</div>
+                      <div className="font-bold text-white text-sm md:text-base mt-1">
+                        {s.total || "0"}
+                      </div>
+                    </div>
+
+                    <div className="lg:col-span-1 text-center p-2 bg-[#362b68]/60 rounded">
+                      <div className="text-xs text-white/80">Grade</div>
+                      <div className="font-bold text-white text-sm md:text-base mt-1">
+                        {s.grade || "?"}
+                      </div>
                     </div>
                   </div>
-
-                  <div className="lg:col-span-2">
-                    <label className="text-xs text-white/90 mb-1 block">
-                      First CA
-                    </label>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      value={s.firstCA}
-                      onChange={(e) =>
-                        updateSubject(i, "firstCA", e.target.value)
-                      }
-                      className="w-full text-sm px-3 py-2 rounded bg-[#362b68]/70 border border-white/10 text-white focus:outline-none focus:border-purple-500/50"
-                      placeholder="0-15"
-                    />
-                  </div>
-
-                  <div className="lg:col-span-2">
-                    <label className="text-xs text-white/90 mb-1 block">
-                      Second CA
-                    </label>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      value={s.secondCA}
-                      onChange={(e) =>
-                        updateSubject(i, "secondCA", e.target.value)
-                      }
-                      className="w-full text-sm px-3 py-2 rounded bg-[#362b68]/70 border border-white/10 text-white focus:outline-none focus:border-purple-500/50"
-                      placeholder="0-15"
-                    />
-                  </div>
-
-                  <div className="lg:col-span-2">
-                    <label className="text-xs text-white/90 mb-1 block">
-                      Exam
-                    </label>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      value={s.exam}
-                      onChange={(e) => updateSubject(i, "exam", e.target.value)}
-                      className="w-full text-sm px-3 py-2 rounded bg-[#362b68]/70 border border-white/10 text-white focus:outline-none focus:border-purple-500/50"
-                      placeholder="0-70"
-                    />
-                  </div>
-
-                  <div className="lg:col-span-2 text-center p-2 bg-[#362b68]/60 rounded">
-                    <div className="text-xs text-white/80">Total</div>
-                    <div className="font-bold text-white text-sm md:text-base mt-1">
-                      {s.total || "0"}
-                    </div>
-                  </div>
-
-                  <div className="lg:col-span-1 text-center p-2 bg-[#362b68]/60 rounded">
-                    <div className="text-xs text-white/80">Grade</div>
-                    <div className="font-bold text-white text-sm md:text-base mt-1">
-                      {s.grade || "?"}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Behavioral Traits Section */}
@@ -629,7 +819,9 @@ export default function ResultEditorModal({
 
           {/* Class Position Section */}
           <div className="bg-[#2a2250] rounded-lg border border-white/10 p-4">
-            <h4 className="text-white font-bold mb-4 text-lg">Class Position</h4>
+            <h4 className="text-white font-bold mb-4 text-lg">
+              Class Position
+            </h4>
             <div className="w-full md:w-1/3">
               <label className="text-xs text-white/90 mb-2 block">
                 Enter the student's position in class:
@@ -647,47 +839,151 @@ export default function ResultEditorModal({
             </div>
           </div>
 
-          {/* Reports Section - Simplified */}
+          {/* ✅ Reports Section WITH SIGNATURES */}
           <div className="bg-[#2a2250] rounded-lg border border-white/10 p-4">
-            <h4 className="text-white font-bold mb-4 text-lg">Reports</h4>
-            <div className="space-y-4">
-              <div>
-                <label className="text-xs text-white/90 mb-2 block">
-                  FORM TEACHER'S REPORT:
-                </label>
-                <textarea
-                  value={formTeacherReport}
-                  onChange={(e) => setFormTeacherReport(e.target.value)}
-                  className="w-full text-sm px-3 py-2 rounded bg-[#362b68]/70 border border-white/10 text-white focus:outline-none focus:border-purple-500/50"
-                  rows={3}
-                  placeholder="Enter form teacher's report here..."
-                />
+            <h4 className="text-white font-bold mb-4 text-lg">
+              Reports & Signatures
+            </h4>
+            <div className="space-y-6">
+              {/* Form Teacher Section */}
+              <div className="border border-white/10 rounded-lg p-4 bg-[#362b68]/20">
+                <h5 className="text-white font-semibold mb-3 text-sm">
+                  Form Teacher
+                </h5>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-xs text-white/90 mb-2 block">
+                      FORM TEACHER'S REPORT:
+                    </label>
+                    <textarea
+                      value={formTeacherReport}
+                      onChange={(e) => setFormTeacherReport(e.target.value)}
+                      className="w-full text-sm px-3 py-2 rounded bg-[#362b68]/70 border border-white/10 text-white focus:outline-none focus:border-purple-500/50"
+                      rows={3}
+                      placeholder="Enter form teacher's report here..."
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-xs text-white/90 mb-2 block">
+                        FORM TEACHER'S NAME:
+                      </label>
+                      <input
+                        type="text"
+                        value={formTeacherName}
+                        onChange={(e) => setFormTeacherName(e.target.value)}
+                        className="w-full text-sm px-3 py-2 rounded bg-[#362b68]/70 border border-white/10 text-white focus:outline-none focus:border-purple-500/50"
+                        placeholder="Enter form teacher's name"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs text-white/90 mb-2 block">
+                        FORM TEACHER'S SIGNATURE:
+                      </label>
+                      <div className="flex flex-col gap-2">
+                        {formTeacherSigPreview && (
+                          <div className="relative w-32 h-16 rounded-lg overflow-hidden border-2 border-[#8055f7] bg-white p-1">
+                            <img
+                              src={formTeacherSigPreview}
+                              alt="Form Teacher Signature"
+                              className="w-full h-full object-contain"
+                            />
+                          </div>
+                        )}
+
+                        <label className="cursor-pointer">
+                          <div className="flex items-center gap-2 border border-[#e7e2f8] rounded-lg px-4 py-2 bg-white/10 text-white hover:bg-white/20 transition text-sm">
+                            <FaCamera className="text-[#8055f7]" />
+                            <span>
+                              {formTeacherSigPreview
+                                ? "Change Signature"
+                                : "Upload Signature"}
+                            </span>
+                          </div>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleFormTeacherSigChange}
+                            className="hidden"
+                            disabled={loading || isUploadingFormTeacherSig}
+                          />
+                        </label>
+
+                        {isUploadingFormTeacherSig && (
+                          <p className="text-xs text-white/70">
+                            Processing signature...
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
 
-              <div>
-                <label className="text-xs text-white/90 mb-2 block">
-                  FORM TEACHER'S NAME:
-                </label>
-                <input
-                  type="text"
-                  value={formTeacherName}
-                  onChange={(e) => setFormTeacherName(e.target.value)}
-                  className="w-full text-sm px-3 py-2 rounded bg-[#362b68]/70 border border-white/10 text-white focus:outline-none focus:border-purple-500/50"
-                  placeholder="Enter form teacher's name"
-                />
-              </div>
+              {/* Principal Section */}
+              <div className="border border-white/10 rounded-lg p-4 bg-[#362b68]/20">
+                <h5 className="text-white font-semibold mb-3 text-sm">
+                  Principal
+                </h5>
 
-              <div>
-                <label className="text-xs text-white/90 mb-2 block">
-                  PRINCIPAL'S REPORT:
-                </label>
-                <textarea
-                  value={principalReport}
-                  onChange={(e) => setPrincipalReport(e.target.value)}
-                  className="w-full text-sm px-3 py-2 rounded bg-[#362b68]/70 border border-white/10 text-white focus:outline-none focus:border-purple-500/50"
-                  rows={3}
-                  placeholder="Enter principal's report here..."
-                />
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-xs text-white/90 mb-2 block">
+                      PRINCIPAL'S REPORT:
+                    </label>
+                    <textarea
+                      value={principalReport}
+                      onChange={(e) => setPrincipalReport(e.target.value)}
+                      className="w-full text-sm px-3 py-2 rounded bg-[#362b68]/70 border border-white/10 text-white focus:outline-none focus:border-purple-500/50"
+                      rows={3}
+                      placeholder="Enter principal's report here..."
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-white/90 mb-2 block">
+                      PRINCIPAL'S SIGNATURE:
+                    </label>
+                    <div className="flex flex-col gap-2">
+                      {principalSigPreview && (
+                        <div className="relative w-32 h-16 rounded-lg overflow-hidden border-2 border-[#8055f7] bg-white p-1">
+                          <img
+                            src={principalSigPreview}
+                            alt="Principal Signature"
+                            className="w-full h-full object-contain"
+                          />
+                        </div>
+                      )}
+
+                      <label className="cursor-pointer w-full md:w-auto">
+                        <div className="flex items-center gap-2 border border-[#e7e2f8] rounded-lg px-4 py-2 bg-white/10 text-white hover:bg-white/20 transition text-sm">
+                          <FaCamera className="text-[#8055f7]" />
+                          <span>
+                            {principalSigPreview
+                              ? "Change Signature"
+                              : "Upload Signature"}
+                          </span>
+                        </div>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handlePrincipalSigChange}
+                          className="hidden"
+                          disabled={loading || isUploadingPrincipalSig}
+                        />
+                      </label>
+
+                      {isUploadingPrincipalSig && (
+                        <p className="text-xs text-white/70">
+                          Processing signature...
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
