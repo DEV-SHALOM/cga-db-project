@@ -1,6 +1,7 @@
 // src/components/ResultEditorModal.jsx
 // ✅ WITH SIGNATURE UPLOADS (Base64) + IMPROVED CLOSE BUTTON
 import { useEffect, useState } from "react";
+import OpenAI from "openai";
 import { gradeFromScore, saveStudentResult } from "../hooks/useResults";
 import {
   Timestamp,
@@ -12,7 +13,15 @@ import {
   where,
 } from "firebase/firestore";
 import { db } from "../firebase";
-import { FaTimes, FaCamera } from "react-icons/fa";
+import { FaTimes, FaCamera, FaMagic } from "react-icons/fa";
+
+// Initialize OpenAI client for AI report generation
+// Replit AI Integrations automatically configures these environment variables
+const openai = new OpenAI({
+  apiKey: import.meta.env.VITE_AI_INTEGRATIONS_OPENAI_API_KEY || "dummy",
+  baseURL: import.meta.env.VITE_AI_INTEGRATIONS_OPENAI_BASE_URL || "https://api.openai.com/v1",
+  dangerouslyAllowBrowser: true,
+});
 
 /**
  * Props:
@@ -124,8 +133,44 @@ export default function ResultEditorModal({
   const [isUploadingFormTeacherSig, setIsUploadingFormTeacherSig] =
     useState(false);
   const [isUploadingPrincipalSig, setIsUploadingPrincipalSig] = useState(false);
+  const [isGeneratingFTReport, setIsGeneratingFTReport] = useState(false);
+  const [isGeneratingPReport, setIsGeneratingPReport] = useState(false);
 
   const [isFetchingData, setIsFetchingData] = useState(false);
+
+  // AI Generation Logic
+  const generateAIReport = async (role) => {
+    const isPrincipal = role === "principal";
+    if (isPrincipal) setIsGeneratingPReport(true);
+    else setIsGeneratingFTReport(true);
+
+    try {
+      const summary = computeSummary();
+      const performance = `The student ${student.name} in ${student.className} achieved an overall score of ${summary.totalObtained} with a percentage of ${summary.percentage}% and an average point of ${summary.avgPoint}. Their overall grade is ${summary.overallGrade}. They ${summary.passed ? "passed all subjects" : "did not pass all subjects"}. Subjects taken: ${subjects.map(s => `${s.name} (${s.total}, ${s.grade})`).join(", ")}.`;
+      
+      const prompt = isPrincipal 
+        ? `As the School Principal, write a professional, encouraging, and concise one-paragraph end-of-term comment for a student's report card based on this performance data: ${performance}. Focus on character, future prospects, and general school standard.`
+        : `As the Form Teacher, write a professional, detailed, and encouraging one-paragraph end-of-term comment for a student's report card based on this performance data: ${performance}. Focus on academic progress, behavioral traits, and specific areas of improvement.`;
+
+      const response = await openai.chat.completions.create({
+        model: "gpt-5",
+        messages: [{ role: "user", content: prompt }],
+        max_completion_tokens: 150,
+      });
+
+      const aiComment = response.choices[0]?.message?.content?.trim();
+      if (aiComment) {
+        if (isPrincipal) setPrincipalReport(aiComment);
+        else setFormTeacherReport(aiComment);
+      }
+    } catch (error) {
+      console.error("AI Generation Error:", error);
+      alert("Failed to generate AI report. Please check your connection or try again.");
+    } finally {
+      if (isPrincipal) setIsGeneratingPReport(false);
+      else setIsGeneratingFTReport(false);
+    }
+  };
 
   // ✅ Base64 conversion function
   const convertImageToBase64 = async (file) => {
@@ -853,9 +898,19 @@ export default function ResultEditorModal({
 
                 <div className="space-y-4">
                   <div>
-                    <label className="text-xs text-white/90 mb-2 block">
-                      FORM TEACHER'S REPORT:
-                    </label>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-xs text-white/90">
+                        FORM TEACHER'S REPORT:
+                      </label>
+                      <button
+                        onClick={() => generateAIReport("teacher")}
+                        disabled={isGeneratingFTReport}
+                        className="flex items-center gap-1.5 px-2 py-1 text-[10px] bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 rounded border border-purple-500/30 transition-colors disabled:opacity-50"
+                      >
+                        <FaMagic className={isGeneratingFTReport ? "animate-spin" : ""} />
+                        {isGeneratingFTReport ? "Generating..." : "Auto AI Generate"}
+                      </button>
+                    </div>
                     <textarea
                       value={formTeacherReport}
                       onChange={(e) => setFormTeacherReport(e.target.value)}
@@ -931,9 +986,19 @@ export default function ResultEditorModal({
 
                 <div className="space-y-4">
                   <div>
-                    <label className="text-xs text-white/90 mb-2 block">
-                      PRINCIPAL'S REPORT:
-                    </label>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-xs text-white/90">
+                        PRINCIPAL'S REPORT:
+                      </label>
+                      <button
+                        onClick={() => generateAIReport("principal")}
+                        disabled={isGeneratingPReport}
+                        className="flex items-center gap-1.5 px-2 py-1 text-[10px] bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 rounded border border-purple-500/30 transition-colors disabled:opacity-50"
+                      >
+                        <FaMagic className={isGeneratingPReport ? "animate-spin" : ""} />
+                        {isGeneratingPReport ? "Generating..." : "Auto AI Generate"}
+                      </button>
+                    </div>
                     <textarea
                       value={principalReport}
                       onChange={(e) => setPrincipalReport(e.target.value)}
