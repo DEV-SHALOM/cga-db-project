@@ -67,6 +67,7 @@ export default function Dashboard() {
   const [expensesToday, setExpensesToday] = useState(0);
   const [totalStudents, setTotalStudents] = useState(0);
   const [attendanceToday, setAttendanceToday] = useState(0);
+  const [totalParents, setTotalParents] = useState(0);
   const [weeklyAttendance, setWeeklyAttendance] = useState([]);
   const [currentTerm, setCurrentTerm] = useState("First Term");
   const [academicYear, setAcademicYear] = useState("");
@@ -245,6 +246,25 @@ export default function Dashboard() {
     const unsub = onSnapshot(query(collection(db, "students")), (snap) =>
       setTotalStudents(snap.size)
     );
+    return () => unsub();
+  }, [user]);
+
+  // Parents count
+  useEffect(() => {
+    if (!user) return;
+    const qParents = query(
+      collection(db, "students"),
+      where("parentPhone", "!=", "nil")
+    );
+    const unsub = onSnapshot(qParents, (snap) => {
+      // Get unique phone numbers
+      const phones = new Set();
+      snap.forEach((d) => {
+        const phone = d.data().parentPhone;
+        if (phone && phone !== "nil") phones.add(phone);
+      });
+      setTotalParents(phones.size);
+    });
     return () => unsub();
   }, [user]);
 
