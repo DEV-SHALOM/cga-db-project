@@ -153,7 +153,7 @@ export default function ResultEditorModal({
         : `As the Form Teacher, write a professional, detailed, and encouraging one-paragraph end-of-term comment for a student's report card based on this performance data: ${performance}. Focus on academic progress, behavioral traits, and specific areas of improvement.`;
 
       const response = await openai.chat.completions.create({
-        model: "gpt-5",
+        model: "gpt-4o-mini",
         messages: [{ role: "user", content: prompt }],
         max_completion_tokens: 150,
       });
