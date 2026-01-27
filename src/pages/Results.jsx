@@ -22,7 +22,7 @@ import ClassSubjectsManager from "../components/ClassSubjectsManager";
 import { generateStudentResultPDF } from "../reports/generateStudentResultPDF";
 import { useActiveTerm } from "../hooks/useActiveTerm";
 import { getStudentPresentDays } from "../utils/attendanceUtils";
-import { doc, getDoc, onSnapshot } from "firebase/firestore";
+import { doc, getDoc, onSnapshot, Timestamp } from "firebase/firestore";
 import { db } from "../firebase";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
