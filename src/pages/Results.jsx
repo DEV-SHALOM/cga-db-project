@@ -150,23 +150,19 @@ export default function ResultsPage() {
   };
 
   const calculateTermProgress = (termName) => {
-    if (!termName || termName === "N/A") return 0;
+    if (!activeTermInfo?.startDate) return 0;
+    
+    const startDate = activeTermInfo.startDate instanceof Timestamp 
+      ? activeTermInfo.startDate.toDate() 
+      : new Date(activeTermInfo.startDate);
+      
     const now = new Date();
-    const currentMonth = now.getMonth();
-    const term = termName;
-    if (!TERM_CONFIG[term]) return 0;
-    const { startMonth, endMonth } = TERM_CONFIG[term];
-    const totalMonths = ((endMonth - startMonth + 12) % 12) + 1;
-    let elapsedMonths;
-    if (currentMonth >= startMonth) {
-      elapsedMonths = currentMonth - startMonth + 1;
-    } else {
-      elapsedMonths = 12 - startMonth + currentMonth + 1;
-    }
-    const progress = Math.min(
-      Math.max((elapsedMonths / totalMonths) * 100, 0),
-      100
-    );
+    
+    // Duration of term is 4 months (approx 120 days)
+    const termDurationMs = 4 * 30 * 24 * 60 * 60 * 1000;
+    const elapsedMs = now.getTime() - startDate.getTime();
+    
+    const progress = Math.min(Math.max((elapsedMs / termDurationMs) * 100, 0), 100);
     return Math.round(progress);
   };
 
@@ -187,6 +183,7 @@ export default function ResultsPage() {
                 academicYear,
                 fullTerm: `${termName} ${academicYear}`,
                 termId: activeTerm.id || termId,
+                startDate: activeTerm.startDate,
                 progress: calculateTermProgress(termName),
               });
             } else {
@@ -204,6 +201,7 @@ export default function ResultsPage() {
                       academicYear,
                       fullTerm: `${termName} ${academicYear}`,
                       termId: termId,
+                      startDate: termData.startDate,
                       progress: calculateTermProgress(termName),
                     });
                   }

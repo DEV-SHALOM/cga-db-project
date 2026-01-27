@@ -693,22 +693,16 @@ export default function Dashboard() {
 
   // Calculate term progress
   const calculateTermProgress = () => {
+    if (!currentTermData?.startDate) return 0;
+    
+    const startDate = currentTermData.startDate.toDate();
     const now = new Date();
-    const currentMonth = now.getMonth();
-    const term = currentTerm;
     
-    const { startMonth, endMonth } = TERM_CONFIG[term];
-    const totalMonths = (endMonth - startMonth + 12) % 12 + 1;
+    // Duration of term is 4 months (approx 120 days)
+    const termDurationMs = 4 * 30 * 24 * 60 * 60 * 1000;
+    const elapsedMs = now.getTime() - startDate.getTime();
     
-    // Calculate elapsed months
-    let elapsedMonths;
-    if (currentMonth >= startMonth) {
-      elapsedMonths = currentMonth - startMonth + 1;
-    } else {
-      elapsedMonths = (12 - startMonth) + currentMonth + 1;
-    }
-    
-    const progress = Math.min(Math.max((elapsedMonths / totalMonths) * 100, 0), 100);
+    const progress = Math.min(Math.max((elapsedMs / termDurationMs) * 100, 0), 100);
     return Math.round(progress);
   };
 
