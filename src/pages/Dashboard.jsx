@@ -921,9 +921,9 @@ export default function Dashboard() {
             textColor="text-green-400"
           />
           <StatCard
-            icon={<BookOpen size={20} />}
-            value={8}
-            label="Parents"
+            icon={<Users size={20} />}
+            value={totalParents}
+            label="Parent Contacts"
             color="from-purple-500/20 to-purple-600/20"
             textColor="text-purple-400"
           />
