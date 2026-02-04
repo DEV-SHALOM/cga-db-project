@@ -13,7 +13,8 @@ import {
   CheckCircle,
   AlertCircle
 } from "lucide-react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
+import Toast from "../components/Toast";
 
 export default function ParentsPage() {
   const { user, isAdmin } = usePermission();
@@ -58,16 +59,30 @@ export default function ParentsPage() {
     const studentLinks = group.students.map(s => `${s.name}: ${getResultLink(s)}`).join("\n");
     const fullMessage = message.replace("[LINK]", studentLinks);
     
-    alert(`Automation Triggered for ${group.phone}:\n\n${fullMessage}`);
+    // Automation simulation
     setSending(false);
-    setStatus({ type: 'success', msg: `Message sent to ${group.phone}` });
-    setTimeout(() => setStatus(null), 3000);
+    showNotification(`Notification prepared for ${group.phone}!`, 'success');
+  };
+
+  const showNotification = (msg, type = 'success') => {
+    setStatus({ type, msg });
+    setTimeout(() => setStatus(null), 2500);
   };
 
   if (!isAdmin()) return <div className="p-8 text-white">Access Denied</div>;
 
   return (
     <div className="min-h-screen py-8 px-4 md:px-8 font-[Poppins]">
+      <AnimatePresence>
+        {status && (
+          <Toast 
+            message={status.msg} 
+            type={status.type} 
+            onClose={() => setStatus(null)} 
+            duration={2500}
+          />
+        )}
+      </AnimatePresence>
       <div className="max-w-6xl mx-auto">
         <header className="mb-8">
           <h1 className="text-3xl font-bold text-white mb-2">Parent Communications</h1>
@@ -123,13 +138,6 @@ export default function ParentsPage() {
                 className="w-full bg-white/10 border border-white/20 rounded-2xl py-3 pl-12 pr-4 text-white outline-none focus:ring-2 focus:ring-purple-500"
               />
             </div>
-
-            {status && (
-              <div className={`p-4 rounded-xl flex items-center gap-3 ${status.type === 'success' ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`}>
-                {status.type === 'success' ? <CheckCircle size={20} /> : <AlertCircle size={20} />}
-                {status.msg}
-              </div>
-            )}
 
             <div className="space-y-4">
               {filteredGroups.map(group => (

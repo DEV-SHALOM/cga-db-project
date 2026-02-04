@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { FaChevronDown, FaPlus, FaEdit, FaTrash, FaCamera } from "react-icons/fa";
 import { Listbox } from "@headlessui/react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   collection,
   addDoc,
@@ -18,8 +18,8 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { db } from "../firebase";
-
 import { usePermission } from "../hooks/usePermission";
+import Toast from "../components/Toast";
 
 /* =========================================================
    Static options & helpers
@@ -88,29 +88,6 @@ function displayEntryPerf(val) {
 /* =========================================================
    UI bits
    ========================================================= */
-
-function Notification({ message }) {
-  return (
-    <div
-      className="fixed top-6 left-1/2 transform -translate-x-1/2 bg-red-600 text-white px-8 py-3 rounded-xl shadow-2xl z-[9999] animate-pop-in"
-      style={{
-        animation:
-          "pop-in 0.22s cubic-bezier(0.65,0,0.35,1), fade-out 0.8s 2.2s forwards",
-      }}
-    >
-      {message}
-      <style>{`
-        @keyframes pop-in {
-          0% { opacity: 0; transform: scale(0.8) translateX(-50%);}
-          100% { opacity: 1; transform: scale(1) translateX(-50%);}
-        }
-        @keyframes fade-out {
-          to { opacity: 0; transform: scale(0.96) translateX(-50%) translateY(-40px);}
-        }
-      `}</style>
-    </div>
-  );
-}
 
 function GlassListbox({
   value,
@@ -522,7 +499,16 @@ export default function StudentsPage() {
       transition={{ duration: 0.3 }}
       className="min-h-screen w-full py-6 px-2 sm:px-8 pb-24"
     >
-      {notification && <Notification message={notification} />}
+      <AnimatePresence>
+        {notification && (
+          <Toast
+            message={notification}
+            type="error"
+            onClose={() => setNotification(null)}
+            duration={2500}
+          />
+        )}
+      </AnimatePresence>
 
       <div className="max-w-7xl mx-auto font-[Poppins]">
         <motion.h2
