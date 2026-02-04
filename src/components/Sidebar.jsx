@@ -34,6 +34,7 @@ const sidebarLinks = [
   { name: "Inventory",         icon: <Box size={20} />,          key: "inventory",  path: "/inventory"  },
   // ✅ New Expenses link (placed right after Inventory)
   { name: "Expenses",          icon: <Receipt size={20} />,      key: "expenses",   path: "/expenses"   },
+  { name: "Parents Portal",    icon: <Users size={20} />,        key: "parents",    path: "/parents"    },
 ];
 
 // Simple initials from display name
