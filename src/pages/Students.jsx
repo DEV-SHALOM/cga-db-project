@@ -1,7 +1,7 @@
 // src/pages/Students.jsx
 // ✅ COMPLETE VERSION - Base64 passport photos + Full table with Edit/Delete buttons
 import { useEffect, useMemo, useState } from "react";
-import { FaChevronDown, FaPlus, FaEdit, FaTrash, FaCamera } from "react-icons/fa";
+import { FaChevronDown, FaPlus, FaEdit, FaTrash, FaCamera, FaUsers, FaUserCheck, FaUserTimes, FaSignOutAlt } from "react-icons/fa";
 import { Listbox } from "@headlessui/react";
 import { motion } from "framer-motion";
 import {
@@ -219,6 +219,18 @@ export default function StudentsPage() {
     show: false,
     student: null,
   });
+
+  // ── Student global stats (real-time via existing onSnapshot) ──────────────
+  const globalStats = useMemo(() => {
+    const all = Object.values(students).flat();
+    const total  = all.length;
+    const male   = all.filter((s) => s.gender === "M").length;
+    const female = all.filter((s) => s.gender === "F").length;
+    const left   = all.filter(
+      (s) => s.dateOfLeaving && s.dateOfLeaving !== "nil"
+    ).length;
+    return { total, male, female, left };
+  }, [students]);
 
   useEffect(() => {
     if (!canStudents) return;
@@ -533,6 +545,69 @@ export default function StudentsPage() {
         >
           Student Management
         </motion.h2>
+
+        {/* ── Quick Stats Cards ── */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ delay: 0.1 }}
+            className="bg-gradient-to-br from-blue-500/20 to-blue-600/20 border border-blue-400/30 rounded-xl px-4 py-4 backdrop-blur-md shadow-lg"
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-blue-300/80 text-xs font-medium mb-1">Total Students</div>
+                <div className="text-white text-2xl font-bold">{globalStats.total}</div>
+              </div>
+              <FaUsers className="text-blue-400 text-3xl" />
+            </div>
+          </motion.div>
+
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ delay: 0.2 }}
+            className="bg-gradient-to-br from-green-500/20 to-green-600/20 border border-green-400/30 rounded-xl px-4 py-4 backdrop-blur-md shadow-lg"
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-green-300/80 text-xs font-medium mb-1">Male Students</div>
+                <div className="text-white text-2xl font-bold">{globalStats.male}</div>
+              </div>
+              <FaUserCheck className="text-green-400 text-3xl" />
+            </div>
+          </motion.div>
+
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ delay: 0.3 }}
+            className="bg-gradient-to-br from-pink-500/20 to-pink-600/20 border border-pink-400/30 rounded-xl px-4 py-4 backdrop-blur-md shadow-lg"
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-pink-300/80 text-xs font-medium mb-1">Female Students</div>
+                <div className="text-white text-2xl font-bold">{globalStats.female}</div>
+              </div>
+              <FaUserTimes className="text-pink-400 text-3xl" />
+            </div>
+          </motion.div>
+
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ delay: 0.4 }}
+            className="bg-gradient-to-br from-amber-500/20 to-amber-600/20 border border-amber-400/30 rounded-xl px-4 py-4 backdrop-blur-md shadow-lg"
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-amber-300/80 text-xs font-medium mb-1">Alumni / Left</div>
+                <div className="text-white text-2xl font-bold">{globalStats.left}</div>
+              </div>
+              <FaSignOutAlt className="text-amber-400 text-3xl" />
+            </div>
+          </motion.div>
+        </div>
 
         <div className="space-y-8">
           {classStructure.map((section) => {
