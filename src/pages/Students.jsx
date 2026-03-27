@@ -657,7 +657,7 @@ export default function StudentsPage() {
                     className={`ml-2 transition-transform ${
                       openSection === section.section ? "rotate-180" : ""
                     }`}
-                  />
+                  />  
                 </button>
 
                 <motion.div
