@@ -11,6 +11,8 @@ import DocumentStorage from "./pages/DocumentStorage";
 import Fees from "./pages/Fees";
 import Inventory from "./pages/Inventory";
 import Expenses from "./pages/Expenses";
+import Parents from "./pages/Parents";
+import ResultView from "./pages/ResultView";
 
 import { AuthProvider, useAuth } from "./AuthProvider"; // auth context
 import RequireSection from "./components/RequireSection"; // 🔐 RBAC route gate
@@ -140,7 +142,22 @@ export default function App() {
                 />
               }
             />
+            <Route
+              path="/parents"
+              element={
+                <PrivateRoute
+                  element={
+                    <RequireSection section="parents">
+                      <Parents />
+                    </RequireSection>
+                  }
+                />
+              }
+            />
           </Route>
+
+          {/* Public Result View */}
+          <Route path="/result-view" element={<ResultView />} />
 
           {/* Defaults */}
           <Route path="/" element={<Navigate to="/login" replace />} />
